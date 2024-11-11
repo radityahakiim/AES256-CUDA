@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34330.188
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AES_using_cuda", "AES_using_cuda\AES_using_cuda.vcxproj", "{86C6CF7F-A4BD-49B2-A48D-6F3A607E1890}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{86C6CF7F-A4BD-49B2-A48D-6F3A607E1890}.Debug|x64.ActiveCfg = Debug|x64
+		{86C6CF7F-A4BD-49B2-A48D-6F3A607E1890}.Debug|x64.Build.0 = Debug|x64
+		{86C6CF7F-A4BD-49B2-A48D-6F3A607E1890}.Release|x64.ActiveCfg = Release|x64
+		{86C6CF7F-A4BD-49B2-A48D-6F3A607E1890}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7597B257-E476-4245-B4CA-287953F8A82E}
+	EndGlobalSection
+EndGlobal
