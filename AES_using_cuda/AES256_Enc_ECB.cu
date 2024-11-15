@@ -41,6 +41,11 @@ __global__ void AESEncryptKernel(const uint8_t* plaintext, uint8_t* ciphertext, 
 }
 
 void h_AESEncryptECB(const uint8_t* plaintext, const uint8_t* key, uint8_t* ciphertext, size_t plaintextLength) {
+	cudaError_t deviceinit = cudaSetDevice(0);
+	if (deviceinit != cudaSuccess) {
+		std::cout << "\nWarning: cudaSetDevice unsuccessful" << std::endl;
+	}
+
 	uint8_t* d_plaintext;
 	uint8_t* d_ciphertext;
 	// uint8_t* d_roundKeys;
@@ -66,13 +71,27 @@ void h_AESEncryptECB(const uint8_t* plaintext, const uint8_t* key, uint8_t* ciph
 	const int threadsPerBlock = AES_KEY_SIZE * Nk;
 	const int blocksPerGrid = (numBlocks + threadsPerBlock - 1) / threadsPerBlock;
 
+	// Profiling purposes
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+
+	cudaEventRecord(start);
 	// Encrypt
 	AESEncryptKernel << <blocksPerGrid, threadsPerBlock >> > (d_plaintext, d_ciphertext, numBlocks);
-	cudaDeviceSynchronize();
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	//cudaDeviceSynchronize();
 	cudaError_t err = cudaGetLastError();
 	if (err != cudaSuccess) {
 		fprintf(stderr, "CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
 	}
+
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	std::cout << std::endl;
+	printf("Kernel execution time: %f ms\n", milliseconds);
+	std::cout << std::endl;
 
 	cudaMemcpy(ciphertext, d_ciphertext, plaintextSize, cudaMemcpyDeviceToHost);
 
