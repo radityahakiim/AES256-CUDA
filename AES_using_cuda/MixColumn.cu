@@ -12,18 +12,16 @@ __device__ uint8_t galois_mul3(uint8_t x) {
     return galois_mul2(x) ^ x;
 }
 
-__global__ void MixColumnsKernel(uint8_t* state) {
-    int col = threadIdx.x;
+__device__ void MixColumns(uint8_t* state) {
+    for (int i = 0; i < 4; i++){
+        uint8_t s0 = state[i];
+        uint8_t s1 = state[4 + i];
+        uint8_t s2 = state[8 + i];
+        uint8_t s3 = state[12 + i];
 
-    if (col < 4) {
-        uint8_t s0 = state[col];
-        uint8_t s1 = state[4 + col];
-        uint8_t s2 = state[8 + col];
-        uint8_t s3 = state[12 + col];
-
-        state[col]      = galois_mul2(s0) ^ galois_mul3(s1) ^ s2 ^ s3;
-        state[4 + col]  = s0 ^ galois_mul2(s1) ^ galois_mul3(s2) ^ s3;
-        state[8 + col]  = s0^s1 ^ galois_mul2(s2) ^ galois_mul3(s3); 
-        state[12 + col] = galois_mul3(s0) ^ s1 ^ s2 ^ galois_mul2(s3);
+        state[i]      = galois_mul2(s0) ^ galois_mul3(s1) ^ s2 ^ s3;
+        state[4 + i]  = s0 ^ galois_mul2(s1) ^ galois_mul3(s2) ^ s3;
+        state[8 + i]  = s0^s1 ^ galois_mul2(s2) ^ galois_mul3(s3); 
+        state[12 + i] = galois_mul3(s0) ^ s1 ^ s2 ^ galois_mul2(s3);
     }
 }

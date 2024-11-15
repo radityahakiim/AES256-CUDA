@@ -4,10 +4,10 @@
 #include <iostream>
 #include <vector>
 
-__global__ void SubBytesKernel(uint8_t* state) {
-	int idx = threadIdx.x;
+__constant__ uint8_t d_sb[256];
 
-	if (idx < AES_BLOCK_SIZE) {
-		state[idx] = sbox[state[idx]];
+__device__ void SubBytes(uint8_t* state) {
+	for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+		state[i] = d_sb[state[i]];
 	}
 }

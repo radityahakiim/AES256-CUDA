@@ -4,9 +4,8 @@
 #include <iostream>
 #include <vector>
 
-__global__ void AddRoundKey(uint8_t* state, const uint8_t* roundKey) {
-	int idx = threadIdx.x;
-	if (idx < Nb * 4) {
-		state[idx] ^= roundKey[idx];
+__device__ void AddRoundKey(uint8_t* state, const uint8_t* roundKey, int blockSize) {
+	for (int i = 0; i < blockSize; i++) {
+		state[i] ^= roundKey[i];
 	}
 }
