@@ -85,7 +85,6 @@
     <CudaCompile Include="kernel.cu" />
     <CudaCompile Include="key_expansion.cu" />
     <CudaCompile Include="MixColumn.cu" />
-    <CudaCompile Include="plaintextPrepare.cu" />
     <CudaCompile Include="plaintextXOR.cu" />
     <CudaCompile Include="ShiftRows.cu" />
     <CudaCompile Include="SubBytes.cu" />

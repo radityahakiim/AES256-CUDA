@@ -45,7 +45,6 @@ __device__ void MixColumns(uint8_t* state);
 void convertStringToAESKey(const std::string& keyString, uint8_t* keyArray);
 
 //std::vector<uint8_t> preparePlaintext(const std::string& input);
-uint8_t* preparePlaintext(const uint8_t* plaintext, size_t plaintextLength, size_t& paddedLength);
 void printHex(const std::vector<uint8_t>& data);
 
 __global__ void XORWithKeyKernel(uint8_t* data, const uint8_t* key, int dataSize, int keySize);
