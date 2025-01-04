@@ -1,60 +1,89 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "aes_header.cuh"
+#include <windows.h>
+#include <commdlg.h>
 #include <iostream>
+#include <iomanip>
 #include <vector>
+#include <string>
 
+// Function to open a file dialog for selecting an input file
+std::string openFileDialog() {
+	char filename[MAX_PATH] = { 0 };
+	OPENFILENAME ofn = {};
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	ofn.hwndOwner = NULL;
+	ofn.lpstrFilter = "All Files\0*.*\0";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+	if (GetOpenFileName(&ofn)) {
+		return std::string(filename);
+	}
+	return "";
+}
+
+// Function to open a save file dialog for specifying an output file
+std::string saveFileDialog() {
+	char filename[MAX_PATH] = { 0 };
+	OPENFILENAME ofn = {};
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	ofn.hwndOwner = NULL;
+	ofn.lpstrFilter = "All Files\0*.*\0";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+
+	if (GetSaveFileName(&ofn)) {
+		return std::string(filename);
+	}
+	return "";
+}
 
 int main() {
-	std::string textKey = "passwordrahasia1234567890";
-	uint8_t plaintext[] = "This is a test message for AES-256 ECB encryption! I love beer! I love Wine!! Thank you based god!!";
-	uint8_t originalKey[AES_KEY_SIZE];
-
-	size_t plaintextLength = strlen((char*)plaintext);
-	size_t paddingSize = AES_BLOCK_SIZE - (plaintextLength % AES_BLOCK_SIZE);
-	size_t padded_len = plaintextLength + paddingSize;
-
-	std::vector<uint8_t> ciphertext(padded_len, 0);
-	std::vector<uint8_t> paddedPlaintext(padded_len, 0);
-	paddedPlaintext.resize(padded_len, paddingSize);
-
-	// Copy plaintext and apply PKCS#7 padding
-	memcpy(paddedPlaintext.data(), plaintext, plaintextLength);
-	std::fill(paddedPlaintext.begin() + plaintextLength, paddedPlaintext.end(), paddingSize);
-
-	// convert string to aes key
-	convertStringToAESKey(textKey, originalKey);
-	// expand the key for encryption purposes
-	const size_t roundKeysSize = AES_EXPANDED_KEY_SIZE;
-	uint8_t expandedKey[roundKeysSize];
-	keyExpansion(expandedKey, originalKey);
-
-	std::cout << "Padded Plaintext in hex :" << std::endl;
-	for (size_t i = 0; i < padded_len; ++i) {
-		printf("%02x ", paddedPlaintext[i]);
-		if ((i + 1) % 16 == 0) std::cout << std::endl;
+	std::string textKey;
+	char choice;
+	std::cout << "(E)ncrypt or (D)ecrypt? ";
+	std::cin >> choice;
+	if (choice != 'D' && choice != 'd') {
+		if (choice != 'E' && choice != 'e') {
+			std::cout << "\nInvalid input !" << std::endl;
+			return 0;
+		}
 	}
 
-	std::cout << "Original Key: " << std::endl;
-	for (int i = 0; i < AES_KEY_SIZE; i++) {
-		printf("%02x ", originalKey[i]);
-		if ((i + 1) % 16 == 0) std::cout << std::endl;
+	bool isDecryption = (choice == 'D' || choice == 'd');
+	if (isDecryption)
+	{
+		std::cout << "Decrypt option selected";
+	} else {
+		std::cout << "Encrypt option selected";
 	}
 
-	//Print the expanded key
-	std::cout << "Expanded Key: " << std::endl;
-	for (int i = 0; i < AES_EXPANDED_KEY_SIZE; i++) {
-		printf("%02x ", expandedKey[i]);
-		if ((i + 1) % 16 == 0) std::cout << std::endl;
+
+	std::cout << "\nEnter your encryption/decryption key (32 max): ";
+	if (textKey.size() > 32) {
+		std::cout << "The text key must be max. 32" << std::endl;
+		return 0;
+	}
+	std::cin >> textKey;
+
+	// Use file dialog to select plaintext file
+	std::string inputFilePath = openFileDialog();
+	if (inputFilePath.empty()) {
+		std::cerr << "No input file selected." << std::endl;
+		return EXIT_FAILURE;
 	}
 
-	h_AESEncryptECB(paddedPlaintext.data(), originalKey, ciphertext.data(), padded_len);
-	std::cout << "Ciphertext: " << std::endl;
-	for (size_t i = 0; i < padded_len; ++i) {
-		printf("%02x ", ciphertext[i]);
-		if ((i + 1) % 16 == 0) std::cout << std::endl;
+	// Use file dialog to specify the output file
+	std::string outputFilePath = saveFileDialog();
+	if (outputFilePath.empty()) {
+		std::cerr << "No output file selected." << std::endl;
+		return EXIT_FAILURE;
 	}
-	std::cout << std::endl;
 
+	h_AESEncDecECB(inputFilePath, textKey, outputFilePath, isDecryption);
 	return 0;
-}
+	}
