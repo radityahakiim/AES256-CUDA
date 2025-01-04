@@ -4,24 +4,46 @@
 #include <iostream>
 #include <vector>
 
-__device__ void ShiftRows(uint8_t* state) {
+__device__ void ShiftRows(state_t* state) {
 		// Second row shifts one position to left
-		uint8_t temp = state[1];
-		state[1]     = state[5];
-		state[5]     = state[9];
-		state[9]     = state[13];
-		state[13]    = temp;
+	    uint8_t temp   = (*state)[0][1];
+		(*state)[0][1] = (*state)[1][1];
+		(*state)[1][1] = (*state)[2][1];
+		(*state)[2][1] = (*state)[3][1];
+		(*state)[3][1] = temp;
 		// Third row shift two positions to the left
-		uint8_t temp1 = state[2];
-		uint8_t temp2 = state[6];
-		state[2]      = state[10];
-		state[6]      = state[14];
-		state[10]     = temp1;
-		state[14]     = temp2;
+		temp           = (*state)[0][2];
+		(*state)[0][2] = (*state)[2][2];
+		(*state)[2][2] = temp;
+		temp           = (*state)[1][2];
+		(*state)[1][2] = (*state)[3][2];
+		(*state)[3][2] = temp;
 		// Fourth row shift three positions to the left
-	    temp          = state[3];
-		state[3]      = state[15];
-		state[15]     = state[11];
-		state[11]     = state[7];
-		state[7]      = temp;
+		temp           = (*state)[0][3];
+		(*state)[0][3] = (*state)[3][3];
+		(*state)[3][3] = (*state)[2][3];
+		(*state)[2][3] = (*state)[1][3];
+		(*state)[1][3] = temp;
+}
+
+__device__ void InvShiftRows(state_t* state) {
+	// Second row shifts right by 1 position
+	uint8_t temp   = (*state)[3][1];
+	(*state)[3][1] = (*state)[2][1];
+	(*state)[2][1] = (*state)[1][1];
+	(*state)[1][1] = (*state)[0][1];
+	(*state)[0][1] = temp;
+	// Third row shifts right by 2 position
+	temp           = (*state)[0][2];
+	(*state)[0][2] = (*state)[2][2];
+	(*state)[2][2] = temp;
+	temp           = (*state)[1][2];
+	(*state)[1][2] = (*state)[3][2];
+	(*state)[3][2] = temp;
+	// Fourth row shifts right by 3 position
+	temp = (*state)[0][3];
+	(*state)[0][3] = (*state)[1][3];
+	(*state)[1][3] = (*state)[2][3];
+	(*state)[2][3] = (*state)[3][3];
+	(*state)[3][3] = temp;
 }
