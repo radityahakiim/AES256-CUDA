@@ -4,10 +4,20 @@
 #include <iostream>
 #include <vector>
 
-__constant__ uint8_t d_sb[256];
+// SubBytes (for encryption)
+__device__ void SubBytes(state_t* state) {
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			(*state)[j][i] = getSBoxValueDevice((*state)[j][i]);
+		}
+	}
+}
 
-__device__ void SubBytes(uint8_t* state) {
-	for (int i = 0; i < AES_BLOCK_SIZE; i++) {
-		state[i] = d_sb[state[i]];
+// Inverse SubBytes (for decryption)
+__device__ void InvSubBytes(state_t* state) {
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			(*state)[j][i] = getSBoxInvertDevice((*state)[j][i]);
+		}
 	}
 }
