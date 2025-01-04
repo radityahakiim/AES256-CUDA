@@ -1,11 +1,16 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "aes_header.cuh"
-#include <iostream>
-#include <vector>
 
-__device__ void AddRoundKey(uint8_t* state, const uint8_t* roundKey, int blockSize) {
-	for (int i = 0; i < blockSize; i++) {
-		state[i] ^= roundKey[i];
+__device__ void AddRoundKey(state_t* state, uint8_t round, const uint8_t* roundKey) {
+	for (uint8_t i = 0; i < 4; i++) {
+		for (uint8_t j = 0; j < 4; j++) {
+			uint32_t index = (round * Nb * 4) + (i * Nb) + j;
+			if (index >= AES_EXPANDED_KEY_SIZE) {
+				printf("Out of bounds access in AddRoundKey at index %u\n", index);
+				return;
+			}
+			(*state)[i][j] ^= roundKey[index];
+		}
 	}
 }
