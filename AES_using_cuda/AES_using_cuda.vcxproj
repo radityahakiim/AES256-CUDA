@@ -59,6 +59,8 @@
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
       <AdditionalOptions> %(AdditionalOptions)</AdditionalOptions>
+      <FastMath>true</FastMath>
+      <Optimization>InheritFromHost</Optimization>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -83,6 +85,7 @@
   <ItemGroup>
     <CudaCompile Include="AddRoundKey.cu" />
     <CudaCompile Include="AES256_Enc_ECB.cu" />
+    <CudaCompile Include="sbox.cu" />
     <CudaCompile Include="kernel.cu" />
     <CudaCompile Include="key_expansion.cu" />
     <CudaCompile Include="MixColumn.cu" />
