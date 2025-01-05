@@ -6,7 +6,7 @@
 //#include <fstream>
 
 // Encryption
-__global__ void AESEncryptKernel(state_t* states, uint8_t* RoundKey, int numBlocks) {
+__global__ void AESEncryptKernel(state_t* states, uint8_t* RoundKey, size_t numBlocks) {
 	int idx = blockDim.x * blockIdx.x + threadIdx.x;
 	if (idx >= numBlocks) return;
 	state_t* state = &states[idx];
@@ -27,7 +27,7 @@ __global__ void AESEncryptKernel(state_t* states, uint8_t* RoundKey, int numBloc
 }
 
 // Decryption
-__global__ void AESDecryptKernel(state_t* states, uint8_t* RoundKey, int numBlocks) {
+__global__ void AESDecryptKernel(state_t* states, uint8_t* RoundKey, size_t numBlocks) {
 	int idx = blockDim.x * blockIdx.x + threadIdx.x;
 	if (idx >= numBlocks) return;
 	state_t* state = &states[idx];
@@ -69,6 +69,7 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
     convertStringToAESKey(key, originalKey); // String key hash using SHA-256
     std::cout << "Key converted to binary\n";
     keyExpansion(expandedKey, originalKey);
+    delete[] originalKey;
     std::cout << "Key expanded\n";
 
     // Copy Round key to device
@@ -89,143 +90,128 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
         return;
     }
 
-    FILE* paddedFile = fopen(outputFile.c_str(), "wb+");
-    if (!paddedFile) {
+    FILE* file_out = fopen(outputFile.c_str(), "wb");
+    if (!file_out) {
         fclose(file_in);
         std::cerr << "Failed to open output file: " << outputFile << std::endl;
         return;
     }
 
-    // Copy input to output
-    char buffer[4096];
+    // Declare buffer data and size
+    size_t bufferSize = 4096 * AES_BLOCK_SIZE;
+    uint8_t* buffer = new uint8_t[bufferSize];
+    uint8_t* d_buffer; // Device buffer
     size_t bytesRead;
-    while ((bytesRead = fread(buffer, 1, sizeof(buffer), file_in)) > 0) {
-        if (fwrite(buffer, 1, bytesRead, paddedFile) != bytesRead) {
-            std::cerr << "Error writing to output file." << std::endl;
-            fclose(file_in);
-            fclose(paddedFile);
+    uint8_t* h_buffer = new uint8_t[bufferSize];
+
+    while ((bytesRead = fread(buffer, 1, bufferSize, file_in)) > 0) {
+        if (!isDecryption && feof(file_in)) {
+            uint8_t padSize = AES_BLOCK_SIZE - (bytesRead % AES_BLOCK_SIZE);
+            // ANSI X9.23
+            if (padSize < AES_BLOCK_SIZE) {
+                for (uint32_t i = 0; i < padSize; ++i) {
+                    buffer[bytesRead + i] = (i == padSize - 1) ? padSize : 0;
+                }
+                bytesRead += padSize;
+                std::cout << padSize << " bytes of padding added, new size: " << bytesRead << std::endl;
+            }
+        }
+        // Grid and threads per block section
+        size_t blockNum = bytesRead / AES_BLOCK_SIZE;
+        size_t threadPblk = blockNum / num_sm;
+        size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
+        if (blockNum % num_sm > 0) threadPblk++;
+        if (threadPblk > maxThreads) {
+            threadPblk = maxThreads;
+            num_sm = static_cast<int>(blockNum) / 1024;
+            if (blockNum % 1024 > 0) {
+                num_sm++;
+            }
+        }
+        // blockNum = std::min(blockNum, (static_cast<size_t>(num_sm) * 8)); // Adjust based on profile
+        std::cout << "Launching kernel with " << blockNum << " blocks, " << threadPblk << " threads per block\n";
+
+        dim3 threadsPerBlock(static_cast<unsigned int>(threadPblk));
+        dim3 blocksPerGrid(static_cast<unsigned int>(blockNum));
+
+        // Device buffer allocation
+        if (cudaMalloc(&d_buffer, bufferSize) != cudaSuccess) {
+            std::cerr << "Failed to allocate device memory.\n";
+            delete[] buffer;
             return;
         }
-    }
-    fclose(file_in);
-    std::cout << "File copied to " << outputFile << std::endl;
 
-    fseek(paddedFile, 0, SEEK_END);
-    uint32_t size = ftell(paddedFile);
-    std::cout << "File size after copy: " << size << " bytes\n";
-
-    if (!isDecryption) {
-        uint32_t len = AES_BLOCK_SIZE - (size % AES_BLOCK_SIZE);
-        uint32_t* pad = new uint32_t[len];
-        // ANSI X9.23 padding
-        for (uint32_t i = 0; i < len - 1; i++) {
-            pad[i] = 0x00;
-        }
-        pad[len - 1] = len;
-        if (fwrite(pad, sizeof(uint32_t), len, paddedFile) != len) {
-            std::cerr << "Error padding the file." << std::endl;
-            delete[] pad;
-            fclose(paddedFile);
+        if (cudaMemcpy(d_buffer, buffer, bytesRead, cudaMemcpyHostToDevice) != cudaSuccess) {
+            std::cerr << "Failed to copy input to device memory.\n";
+            delete[] buffer;
+            cudaFree(d_buffer);
             return;
         }
-        delete[] pad;
-        size += len;
-        std::cout << len << " bytes of padding added, new size: " << size << std::endl;
-    }
 
-    rewind(paddedFile);
-    uint8_t* input = new uint8_t[size];
-    if (fread(input, 1, size, paddedFile) != size) {
-        std::cerr << "Error reading padded file into memory." << std::endl;
-        delete[] input;
-        fclose(paddedFile);
-        return;
-    }
-    fclose(paddedFile);
-    std::cout << "Input data read into memory\n";
+        if (!isDecryption) {
+            AESEncryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, d_roundKey, blockNum);
+        }
+        else {
+            AESDecryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, d_roundKey, blockNum);
+        }
+        if ((err = cudaGetLastError()) != cudaSuccess) {
+            std::cerr << "Kernel launch failed: " << cudaGetErrorString(err);
+            delete[] buffer;
+            cudaFree(d_buffer);
+            return;
+        }
+        err = cudaDeviceSynchronize(); // Sychronize the kernel
+        if (cudaGetLastError() != cudaSuccess) {
+            std::cerr << "Kernel exec failed :" << cudaGetErrorString(err);
+            delete[] buffer;
+            cudaFree(d_buffer);
+            return;
+        }
 
-    // Grid and threads per block section
-    int blockNum = (size + AES_BLOCK_SIZE - 1) / AES_BLOCK_SIZE;
-    int threadPblk = std::min(256, prop.maxThreadsPerBlock); // Good starting point, adjust based on performance
-    blockNum = std::min(blockNum, prop.multiProcessorCount * 8); // Adjust based on profile
-    std::cout << "Launching kernel with " << blockNum << " blocks, " << threadPblk << " threads per block\n";
+        std::cout << "Kernel execution completed\n";
 
-    dim3 threadsPerBlock(threadPblk);
-    dim3 blocksPerGrid(blockNum);
+        // Copy back to host
+        err = cudaMemcpy(h_buffer, d_buffer, bytesRead, cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) {
+            std::cerr << "Failed to copy result from device to host memory : " << cudaGetErrorString(err);
+            delete[] buffer;
+            delete[] h_buffer;
+            cudaFree(d_buffer);
+            cudaFree(d_roundKey);
+            return;
+        }
 
-    // Device mem. allocation
-    uint8_t* d_input;
-    if (cudaMalloc(&d_input, size) != cudaSuccess) {
-        std::cerr << "Failed to allocate device memory.\n";
-        delete[] input;
-        return;
-    }
-    if (cudaMemcpy(d_input, input, size, cudaMemcpyHostToDevice) != cudaSuccess) {
-        std::cerr << "Failed to copy input to device memory.\n";
-        delete[] input;
-        cudaFree(d_input);
-        return;
-    }
-
-    if (!isDecryption) {
-        AESEncryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_input, d_roundKey, blockNum);
-    }
-    else {
-        AESDecryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_input, d_roundKey, blockNum);
-    }
-    err = cudaDeviceSynchronize(); // Sychronize the kernel
-    if (cudaGetLastError() != cudaSuccess) {
-        std::cerr << "Kernel launch failed :" << cudaGetErrorString(err);
-        delete[] input;
-        cudaFree(d_input);
-        return;
-    }
-
-    std::cout << "Kernel execution completed\n";
-
-    // Copy back to host
-    uint8_t* h_result = new uint8_t[size];
-    err = cudaMemcpy(h_result, d_input, size, cudaMemcpyDeviceToHost);
-        if(err != cudaSuccess){
-        std::cerr << "Failed to copy result from device to host memory : " << cudaGetErrorString(err);
-        delete[] input;
-        delete[] h_result;
-        cudaFree(d_input);
-        return;
-    }
-
-    // Remove the padding
-        if (isDecryption) {
-            uint32_t del = h_result[size - 1];
-            if (del <= AES_BLOCK_SIZE) {
-                size -= del;
-                std::cout << del << " bytes of padding removed, new size: " << size << std::endl;
+        // Remove the padding
+        if (isDecryption && feof(file_in)) {
+            uint32_t padding = h_buffer[bytesRead - 1];
+            if (padding <= AES_BLOCK_SIZE) {
+                bytesRead -= padding;
+                std::cout << padding << " bytes of padding removed, new size: " << bytesRead << std::endl;
             }
             else {
-                std::cerr << "Invalid padding detected post decryption. Padding byte: " << del;
+                std::cerr << "Invalid padding detected post decryption. Padding byte: " << padding;
+                delete[] buffer;
+                delete[] h_buffer;
+                cudaFree(d_buffer);
+                cudaFree(d_roundKey);
+                fclose(file_in);
+                fclose(file_out);
                 return;
             }
         }
 
-    FILE* file_out = fopen(outputFile.c_str(), "wb");
-    if (!file_out) {
-        std::cerr << "Failed to open output file for writing result.\n";
-        delete[] input;
-        delete[] h_result;
-        cudaFree(d_input);
-        return;
+        if (fwrite(h_buffer, 1, bytesRead, file_out) != bytesRead) {
+            std::cerr << "Error writing decrypted data to file.\n";
+        }
+        cudaFree(d_buffer);
     }
-    if (fwrite(h_result, sizeof(uint8_t), size, file_out) != size) {
-        std::cerr << "Error writing decrypted data to file.\n";
-    }
-    fclose(file_out);
-    std::cout << "Result written to file\n";
 
     // Cleanup
-    delete[] input;
-    delete[] h_result;
-    delete[] originalKey;
-    cudaFree(d_input);
+    fclose(file_in);
+    fclose(file_out);
+    delete[] buffer;
+    delete[] h_buffer;
+    cudaFree(d_roundKey);
 
     std::cout << "Process completed\n";
 }
