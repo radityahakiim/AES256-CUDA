@@ -1,5 +1,5 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
+// #include "cuda_runtime.h"
+// #include "device_launch_parameters.h"
 #include "aes_header.cuh"
 #include <windows.h>
 #include <commdlg.h>
@@ -9,7 +9,7 @@
 #include <string>
 
 // Function to open a file dialog for selecting an input file
-std::string openFileDialog() {
+inline std::string openFileDialog() {
 	char filename[MAX_PATH] = { 0 };
 	OPENFILENAME ofn = {};
 	ofn.lStructSize = sizeof(OPENFILENAME);
@@ -26,7 +26,7 @@ std::string openFileDialog() {
 }
 
 // Function to open a save file dialog for specifying an output file
-std::string saveFileDialog() {
+inline std::string saveFileDialog() {
 	char filename[MAX_PATH] = { 0 };
 	OPENFILENAME ofn = {};
 	ofn.lStructSize = sizeof(OPENFILENAME);
