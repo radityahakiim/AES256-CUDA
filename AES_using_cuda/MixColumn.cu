@@ -2,20 +2,26 @@
 #include "device_launch_parameters.h"
 #include "aes_header.cuh"
 
-__device__ uint8_t xtime(uint8_t x) {
+static __device__ __forceinline__ uint8_t xtime(uint8_t x) {
     return ((x << 1) ^ (((x >> 7) & 1) * 0x1b));
 }
 
-__device__ uint8_t Multiply(uint8_t x, uint8_t y) {
+static __device__ __forceinline__ uint8_t Multiply(uint8_t x, uint8_t y) {
+    uint8_t xt1 = xtime(x);
+    uint8_t xt2 = xtime(xt1);
+    uint8_t xt3 = xtime(xt2);
+    uint8_t xt4 = xtime(xt3);
+
     return (((y & 1) * x) ^
-        ((y >> 1 & 1) * xtime(x)) ^
-        ((y >> 2 & 1) * xtime(xtime(x))) ^
-        ((y >> 3 & 1) * xtime(xtime(xtime(x)))) ^
-        ((y >> 4 & 1) * xtime(xtime(xtime(xtime(x))))));
+        ((y >> 1 & 1) * xt1) ^
+        ((y >> 2 & 1) * xt2) ^
+        ((y >> 3 & 1) * xt3) ^
+        ((y >> 4 & 1) * xt4));
 }
 
 __device__ void MixColumns(state_t* state) {
     uint8_t tmp, tm, t;
+    #pragma unroll
     for (uint8_t i = 0; i < 4; i++){
             t   = (*state)[i][0];
             tmp = (*state)[i][0] ^ (*state)[i][1] ^ (*state)[i][2] ^ (*state)[i][3];
@@ -28,6 +34,7 @@ __device__ void MixColumns(state_t* state) {
 
 __device__ void InvMixColumns(state_t* state) {
     uint8_t a, b, c, d;
+    #pragma unroll
     for (int i = 0; i < 4; i++) {
         a = (*state)[i][0];
         b = (*state)[i][1];
