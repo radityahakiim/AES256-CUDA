@@ -6,7 +6,9 @@
 
 // SubBytes (for encryption)
 __device__ void SubBytes(state_t* state) {
+    #pragma unroll
 	for (int i = 0; i < 4; i++) {
+        #pragma unroll
 		for (int j = 0; j < 4; j++) {
 			(*state)[j][i] = getSBoxValueDevice((*state)[j][i]);
 		}
@@ -15,7 +17,9 @@ __device__ void SubBytes(state_t* state) {
 
 // Inverse SubBytes (for decryption)
 __device__ void InvSubBytes(state_t* state) {
+    #pragma unroll
 	for (int i = 0; i < 4; i++) {
+        #pragma unroll
 		for (int j = 0; j < 4; j++) {
 			(*state)[j][i] = getSBoxInvertDevice((*state)[j][i]);
 		}
