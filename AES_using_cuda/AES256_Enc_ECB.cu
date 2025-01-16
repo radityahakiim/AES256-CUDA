@@ -5,46 +5,111 @@
 #include <stdexcept>
 //#include <fstream>
 
+__constant__ uint8_t c_Rk[AES_EXPANDED_KEY_SIZE];
+
 // Encryption
-__global__ void AESEncryptKernel(state_t* states, uint8_t* RoundKey, size_t numBlocks) {
-	int idx = blockDim.x * blockIdx.x + threadIdx.x;
+__global__ void AESEncryptKernel(state_t* states, size_t numBlocks) {
+    extern __shared__ state_t sharedState[];
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
 	if (idx >= numBlocks) return;
-	state_t* state = &states[idx];
+
+    #pragma unroll
+    for (int i = 0; i < 4; ++i) {
+    #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            sharedState[threadIdx.x][i][j] = __ldg(&states[idx][i][j]);
+        }
+    }
+
+    __syncthreads();
+
+    state_t* state = &sharedState[threadIdx.x];
+    // __shared__ uint8_t shared_rk[AES_EXPANDED_KEY_SIZE];
+
+    // if (threadIdx.x < AES_EXPANDED_KEY_SIZE) {
+    // for (int i = threadIdx.x; i < AES_EXPANDED_KEY_SIZE; i += blockDim.x) {
+    //     shared_rk[threadIdx.x] = RoundKey[threadIdx.x];
+    // }
+    // }
+
+    // __syncthreads();
     
 	// Initial rounds
-	AddRoundKey(state, 0, RoundKey);
+	AddRoundKey(state, 0, c_Rk);
 		// 13 Rounds for AES-256
+        #pragma unroll
 		for (int round = 1; round < Nr; ++round) {
 			SubBytes(state);
 			ShiftRows(state);
 			MixColumns(state);
-			AddRoundKey(state, round, RoundKey);
+			AddRoundKey(state, round, c_Rk);
 		}
 		// Final round
 		SubBytes(state);
 		ShiftRows(state);
-		AddRoundKey(state, Nr, RoundKey);
+		AddRoundKey(state, Nr, c_Rk);
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+        #pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                states[idx][i][j] = sharedState[threadIdx.x][i][j];
+            }
+        }        
 }
 
 // Decryption
-__global__ void AESDecryptKernel(state_t* states, uint8_t* RoundKey, size_t numBlocks) {
-	int idx = blockDim.x * blockIdx.x + threadIdx.x;
+__global__ void AESDecryptKernel(state_t* states, size_t numBlocks) {
+    extern __shared__ state_t sharedState[];
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
 	if (idx >= numBlocks) return;
-	state_t* state = &states[idx];
+	
+    #pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            sharedState[threadIdx.x][i][j] = __ldg(&states[idx][i][j]);
+        }
+    }
 
+    __syncthreads();
+    
+    state_t* state = &sharedState[threadIdx.x];
+
+   /* __shared__ uint8_t shared_rk[AES_EXPANDED_KEY_SIZE];
+
+    if (threadIdx.x < AES_EXPANDED_KEY_SIZE) {
+        shared_rk[threadIdx.x] = RoundKey[threadIdx.x];
+    }
+
+    __syncthreads();
+    */
 	// Initial rounds
-	AddRoundKey(state, Nr, RoundKey);
+	AddRoundKey(state, Nr, c_Rk);
 	// 13 Rounds for AES-256 (decryption)
+    #pragma unroll
 	for (int round = Nr - 1; round > 0; --round) {
 		InvShiftRows(state);
 		InvSubBytes(state);
-		AddRoundKey(state, round, RoundKey);
+		AddRoundKey(state, round, c_Rk);
 		InvMixColumns(state);
 	}
 	// Final round
 	InvShiftRows(state);
 	InvSubBytes(state);
-	AddRoundKey(state, 0, RoundKey);
+	AddRoundKey(state, 0, c_Rk);
+
+    __syncthreads();
+
+    #pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            states[idx][i][j] = sharedState[threadIdx.x][i][j];
+        }
+    }
 }
 
 void h_AESEncDecECB(std::string inputFile, const std::string key, std::string outputFile, bool isDecryption) {
@@ -62,26 +127,36 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
     std::cout << "Using a GPU with " << num_sm << " SMs\n";
 
     // Round Key section
-    uint8_t* originalKey = new uint8_t[AES_KEY_SIZE];
-    uint8_t* expandedKey = new uint8_t[AES_EXPANDED_KEY_SIZE];
+    uint8_t* originalKey;
+    cudaMallocHost(&originalKey, AES_KEY_SIZE);
+    uint8_t* expandedKey;
+    cudaMallocHost(&expandedKey, AES_EXPANDED_KEY_SIZE);
 
     // Key processing
     convertStringToAESKey(key, originalKey); // String key hash using SHA-256
     std::cout << "Key converted to binary\n";
     keyExpansion(expandedKey, originalKey);
-    delete[] originalKey;
+    cudaFreeHost(originalKey);
     std::cout << "Key expanded\n";
 
     // Copy Round key to device
-    uint8_t* d_roundKey;
-    cudaMalloc(&d_roundKey, AES_EXPANDED_KEY_SIZE);
-    cudaMemcpy(d_roundKey, expandedKey, AES_EXPANDED_KEY_SIZE, cudaMemcpyHostToDevice);
-    delete[] expandedKey;
-    std::cout << "Expanded key copied to device\n";
+    // uint8_t* d_roundKey;
+    // cudaMalloc(&d_roundKey, AES_EXPANDED_KEY_SIZE);
+    cudaMemcpyToSymbol(c_Rk, expandedKey, AES_EXPANDED_KEY_SIZE);
+    cudaFreeHost(expandedKey);
+    std::cout << "Expanded key copied to constant\n";
 
     // S-box initialization
     SBoxInit(isDecryption);
     std::cout << "S-box initialized for " << (isDecryption ? "decryption" : "encryption") << std::endl;
+
+    // CUDA Events timing
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    float milliseconds = 0;
+    float totalTime = 0.0;
+    int kernelExec = 0;
 
     // File processing 
     FILE* file_in = fopen(inputFile.c_str(), "rb");
@@ -98,11 +173,17 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
     }
 
     // Declare buffer data and size
-    size_t bufferSize = 4096 * AES_BLOCK_SIZE;
-    uint8_t* buffer = new uint8_t[bufferSize];
+    size_t bufferSize = (static_cast<size_t>(1024) * 1024);
+    uint8_t* buffer;
     uint8_t* d_buffer; // Device buffer
     size_t bytesRead;
-    uint8_t* h_buffer = new uint8_t[bufferSize];
+    // Host alloc
+    cudaMallocHost(&buffer, bufferSize);
+    // Device buffer allocation
+    if (cudaMalloc(&d_buffer, bufferSize) != cudaSuccess) {
+        cudaDeviceReset();
+        return;
+    }
 
     while ((bytesRead = fread(buffer, 1, bufferSize, file_in)) > 0) {
         if (!isDecryption && feof(file_in)) {
@@ -117,9 +198,10 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
             }
         }
         // Grid and threads per block section
+        size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
         size_t blockNum = bytesRead / AES_BLOCK_SIZE;
         size_t threadPblk = blockNum / num_sm;
-        size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
+        // size_t bp_grid = (blockNum + threadPblk - 1) / threadPblk;
         if (blockNum % num_sm > 0) threadPblk++;
         if (threadPblk > maxThreads) {
             threadPblk = maxThreads;
@@ -129,89 +211,88 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
             }
         }
         // blockNum = std::min(blockNum, (static_cast<size_t>(num_sm) * 8)); // Adjust based on profile
-        std::cout << "Launching kernel with " << blockNum << " blocks, " << threadPblk << " threads per block\n";
+        std::cout << "Launching kernel with " << num_sm << " blocks, " << threadPblk << " threads per block\n";
 
         dim3 threadsPerBlock(static_cast<unsigned int>(threadPblk));
-        dim3 blocksPerGrid(static_cast<unsigned int>(blockNum));
-
-        // Device buffer allocation
-        if (cudaMalloc(&d_buffer, bufferSize) != cudaSuccess) {
-            std::cerr << "Failed to allocate device memory.\n";
-            delete[] buffer;
-            return;
-        }
+        dim3 blocksPerGrid(static_cast<unsigned int>(num_sm));
+        size_t shmemSize = sizeof(state_t) * threadPblk;
 
         if (cudaMemcpy(d_buffer, buffer, bytesRead, cudaMemcpyHostToDevice) != cudaSuccess) {
             std::cerr << "Failed to copy input to device memory.\n";
-            delete[] buffer;
-            cudaFree(d_buffer);
+            cudaDeviceReset();
             return;
         }
 
+        cudaEventRecord(start);
+
         if (!isDecryption) {
-            AESEncryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, d_roundKey, blockNum);
+            AESEncryptKernel << <blocksPerGrid, threadsPerBlock, shmemSize>> > ((state_t*)d_buffer, blockNum);
         }
         else {
-            AESDecryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, d_roundKey, blockNum);
+            AESDecryptKernel << <blocksPerGrid, threadsPerBlock, shmemSize>> > ((state_t*)d_buffer, blockNum);
         }
         if ((err = cudaGetLastError()) != cudaSuccess) {
             std::cerr << "Kernel launch failed: " << cudaGetErrorString(err);
-            delete[] buffer;
-            cudaFree(d_buffer);
+            cudaDeviceReset();
             return;
         }
-        err = cudaDeviceSynchronize(); // Sychronize the kernel
-        if (cudaGetLastError() != cudaSuccess) {
-            std::cerr << "Kernel exec failed :" << cudaGetErrorString(err);
-            delete[] buffer;
-            cudaFree(d_buffer);
-            return;
-        }
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&milliseconds, start, stop);
+        std::cout << "Kernel execution completed in " << milliseconds << " ms\n";
 
-        std::cout << "Kernel execution completed\n";
+        // Accumulate the time and count the execution
+        totalTime += milliseconds;
+        kernelExec++;
 
         // Copy back to host
-        err = cudaMemcpy(h_buffer, d_buffer, bytesRead, cudaMemcpyDeviceToHost);
+        err = cudaMemcpy(buffer, d_buffer, bytesRead, cudaMemcpyDeviceToHost);
         if (err != cudaSuccess) {
             std::cerr << "Failed to copy result from device to host memory : " << cudaGetErrorString(err);
-            delete[] buffer;
-            delete[] h_buffer;
-            cudaFree(d_buffer);
-            cudaFree(d_roundKey);
+            cudaDeviceReset();
             return;
         }
 
         // Remove the padding
         if (isDecryption && feof(file_in)) {
-            uint32_t padding = h_buffer[bytesRead - 1];
+            uint32_t padding = buffer[bytesRead - 1];
             if (padding <= AES_BLOCK_SIZE) {
                 bytesRead -= padding;
                 std::cout << padding << " bytes of padding removed, new size: " << bytesRead << std::endl;
             }
             else {
                 std::cerr << "Invalid padding detected post decryption. Padding byte: " << padding;
-                delete[] buffer;
-                delete[] h_buffer;
-                cudaFree(d_buffer);
-                cudaFree(d_roundKey);
-                fclose(file_in);
-                fclose(file_out);
+                cudaDeviceReset();
                 return;
             }
         }
 
-        if (fwrite(h_buffer, 1, bytesRead, file_out) != bytesRead) {
+        if (fwrite(buffer, 1, bytesRead, file_out) != bytesRead) {
             std::cerr << "Error writing decrypted data to file.\n";
+            cudaDeviceReset();
+            return;
         }
-        cudaFree(d_buffer);
     }
 
     // Cleanup
     fclose(file_in);
     fclose(file_out);
-    delete[] buffer;
-    delete[] h_buffer;
-    cudaFree(d_roundKey);
+    cudaFreeHost(buffer);
+    cudaFree(d_buffer);
+    // cudaFree(d_roundKey);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    // Calculate and print average time
+    if (kernelExec > 0) {
+        double averageTime = totalTime / kernelExec;
+        std::cout << "Total time: " << totalTime << " ms\n";
+        std::cout << "Times kernel executed: " << kernelExec << " times\n";
+        std::cout << "Average kernel execution time: " << averageTime << " ms\n";
+    }
+    else {
+        std::cout << "No kernels were executed.\n";
+    }
 
     std::cout << "Process completed\n";
 }
