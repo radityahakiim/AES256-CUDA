@@ -98,7 +98,7 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
     }
 
     // Declare buffer data and size
-    size_t bufferSize = 4096 * AES_BLOCK_SIZE;
+    size_t bufferSize = (1024 * 1024);
     uint8_t* buffer = new uint8_t[bufferSize];
     uint8_t* d_buffer; // Device buffer
     size_t bytesRead;
@@ -129,10 +129,10 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
             }
         }
         // blockNum = std::min(blockNum, (static_cast<size_t>(num_sm) * 8)); // Adjust based on profile
-        std::cout << "Launching kernel with " << blockNum << " blocks, " << threadPblk << " threads per block\n";
+        std::cout << "Launching kernel with " << num_sm << " blocks, " << threadPblk << " threads per block\n";
 
         dim3 threadsPerBlock(static_cast<unsigned int>(threadPblk));
-        dim3 blocksPerGrid(static_cast<unsigned int>(blockNum));
+        dim3 blocksPerGrid(static_cast<unsigned int>(num_sm));
 
         // Device buffer allocation
         if (cudaMalloc(&d_buffer, bufferSize) != cudaSuccess) {
@@ -203,7 +203,6 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
         if (fwrite(h_buffer, 1, bytesRead, file_out) != bytesRead) {
             std::cerr << "Error writing decrypted data to file.\n";
         }
-        cudaFree(d_buffer);
     }
 
     // Cleanup
@@ -212,6 +211,7 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
     delete[] buffer;
     delete[] h_buffer;
     cudaFree(d_roundKey);
+    cudaFree(d_buffer);
 
     std::cout << "Process completed\n";
 }
