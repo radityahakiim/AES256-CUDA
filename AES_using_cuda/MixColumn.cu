@@ -20,30 +20,37 @@ static __device__ __forceinline__ uint8_t Multiply(uint8_t x, uint8_t y) {
 }
 
 __device__ void MixColumns(state_t* state) {
-    uint8_t tmp, tm, t;
-    #pragma unroll
-    for (uint8_t i = 0; i < 4; i++){
-            t   = (*state)[i][0];
-            tmp = (*state)[i][0] ^ (*state)[i][1] ^ (*state)[i][2] ^ (*state)[i][3];
-            tm  = (*state)[i][0] ^ (*state)[i][1]; tm = xtime(tm); (*state)[i][0] ^= tm ^ tmp;
-            tm  = (*state)[i][1] ^ (*state)[i][2]; tm = xtime(tm); (*state)[i][1] ^= tm ^ tmp;
-            tm  = (*state)[i][2] ^ (*state)[i][3]; tm = xtime(tm); (*state)[i][2] ^= tm ^ tmp;
-            tm  = (*state)[i][3] ^ t             ; tm = xtime(tm); (*state)[i][3] ^= tm ^ tmp;
-     }
+    int lane = threadIdx.x & 3;
+
+    uint8_t a0 = (*state)[0][lane];
+    uint8_t a1 = (*state)[1][lane];
+    uint8_t a2 = (*state)[2][lane];
+    uint8_t a3 = (*state)[3][lane];
+
+    // Compute the MixColumns transformation using xtime and XORs
+    uint8_t t = a0 ^ a1 ^ a2 ^ a3;
+    uint8_t tmp0 = xtime(a0 ^ a1) ^ t ^ a0;
+    uint8_t tmp1 = xtime(a1 ^ a2) ^ t ^ a1;
+    uint8_t tmp2 = xtime(a2 ^ a3) ^ t ^ a2;
+    uint8_t tmp3 = xtime(a3 ^ a0) ^ t ^ a3;
+
+    // Synchronize the warp and shuffle results
+    (*state)[0][lane] = tmp0;
+    (*state)[1][lane] = tmp1;
+    (*state)[2][lane] = tmp2;
+    (*state)[3][lane] = tmp3;
 }
 
 __device__ void InvMixColumns(state_t* state) {
+    int lane = threadIdx.x & 3;
     uint8_t a, b, c, d;
-    #pragma unroll
-    for (int i = 0; i < 4; i++) {
-        a = (*state)[i][0];
-        b = (*state)[i][1];
-        c = (*state)[i][2];
-        d = (*state)[i][3];
+    a = (*state)[0][lane];
+    b = (*state)[1][lane];
+    c = (*state)[2][lane];
+    d = (*state)[3][lane];
 
-        (*state)[i][0] = Multiply(a, 0x0e) ^ Multiply(b, 0x0b) ^ Multiply(c, 0x0d) ^ Multiply(d, 0x09);
-        (*state)[i][1] = Multiply(a, 0x09) ^ Multiply(b, 0x0e) ^ Multiply(c, 0x0b) ^ Multiply(d, 0x0d);
-        (*state)[i][2] = Multiply(a, 0x0d) ^ Multiply(b, 0x09) ^ Multiply(c, 0x0e) ^ Multiply(d, 0x0b);
-        (*state)[i][3] = Multiply(a, 0x0b) ^ Multiply(b, 0x0d) ^ Multiply(c, 0x09) ^ Multiply(d, 0x0e);
-    }
+    (*state)[0][lane] = Multiply(a, 0x0e) ^ Multiply(b, 0x0b) ^ Multiply(c, 0x0d) ^ Multiply(d, 0x09);
+    (*state)[1][lane] = Multiply(a, 0x09) ^ Multiply(b, 0x0e) ^ Multiply(c, 0x0b) ^ Multiply(d, 0x0d);
+    (*state)[2][lane] = Multiply(a, 0x0d) ^ Multiply(b, 0x09) ^ Multiply(c, 0x0e) ^ Multiply(d, 0x0b);
+    (*state)[3][lane] = Multiply(a, 0x0b) ^ Multiply(b, 0x0d) ^ Multiply(c, 0x09) ^ Multiply(d, 0x0e);
 }

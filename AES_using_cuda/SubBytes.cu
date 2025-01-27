@@ -6,22 +6,20 @@
 
 // SubBytes (for encryption)
 __device__ void SubBytes(state_t* state) {
-    #pragma unroll
-	for (int i = 0; i < 4; i++) {
-        #pragma unroll
-		for (int j = 0; j < 4; j++) {
-			(*state)[j][i] = getSBoxValueDevice((*state)[j][i]);
-		}
+	int col = threadIdx.x % 4;
+	int row = threadIdx.x / 4;
+
+	if (threadIdx.x < 16) {
+		(*state)[col][row] = getSBoxValueDevice((*state)[col][row]);
 	}
 }
 
 // Inverse SubBytes (for decryption)
 __device__ void InvSubBytes(state_t* state) {
-    #pragma unroll
-	for (int i = 0; i < 4; i++) {
-        #pragma unroll
-		for (int j = 0; j < 4; j++) {
-			(*state)[j][i] = getSBoxInvertDevice((*state)[j][i]);
-		}
+	int col = threadIdx.x % 4;
+	int row = threadIdx.x / 4;
+
+	if (threadIdx.x < 16) {
+		(*state)[col][row] = getSBoxInvertDevice((*state)[col][row]);
 	}
 }
