@@ -24,16 +24,6 @@ __global__ void AESEncryptKernel(state_t* states, size_t numBlocks) {
     __syncthreads();
 
     state_t* state = &sharedState[threadIdx.x];
-    // __shared__ uint8_t shared_rk[AES_EXPANDED_KEY_SIZE];
-
-    // if (threadIdx.x < AES_EXPANDED_KEY_SIZE) {
-    // for (int i = threadIdx.x; i < AES_EXPANDED_KEY_SIZE; i += blockDim.x) {
-    //     shared_rk[threadIdx.x] = RoundKey[threadIdx.x];
-    // }
-    // }
-
-    // __syncthreads();
-    
 	// Initial rounds
 	AddRoundKey(state, 0, c_Rk);
 		// 13 Rounds for AES-256
@@ -78,14 +68,6 @@ __global__ void AESDecryptKernel(state_t* states, size_t numBlocks) {
     
     state_t* state = &sharedState[threadIdx.x];
 
-   /* __shared__ uint8_t shared_rk[AES_EXPANDED_KEY_SIZE];
-
-    if (threadIdx.x < AES_EXPANDED_KEY_SIZE) {
-        shared_rk[threadIdx.x] = RoundKey[threadIdx.x];
-    }
-
-    __syncthreads();
-    */
 	// Initial rounds
 	AddRoundKey(state, Nr, c_Rk);
 	// 13 Rounds for AES-256 (decryption)
