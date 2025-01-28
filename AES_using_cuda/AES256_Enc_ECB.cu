@@ -65,7 +65,6 @@ __global__ void AESDecryptKernel(state_t* states, size_t numBlocks) {
     }
 
     __syncthreads();
-    
     state_t* state = &sharedState[threadIdx.x];
 
 	// Initial rounds
