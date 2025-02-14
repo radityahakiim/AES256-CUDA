@@ -33,10 +33,10 @@ extern uint8_t Rcon[8];
 // __constant__ extern int d_Nk;
 
 // Kernel for expanding the AES key (declaration only)
-void keyExpansion(uint8_t* expandedKey, const uint8_t* originalKey);
+void keyExpansion(uint32_t* expandedKey, const uint8_t* originalKey);
 
 // Kernel for AddRoundKey (declaration only)
-__device__ void AddRoundKey(state_t* state, uint8_t round, const uint8_t* roundKey);
+__device__ void AddRoundKey(state_t* state, uint8_t round, const uint32_t* roundKey);
 
 // Kernel for SubBytes (declaration only)
 __device__ void SubBytes(state_t* state);
