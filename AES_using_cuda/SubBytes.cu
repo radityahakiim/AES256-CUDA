@@ -8,8 +8,8 @@
 __device__ void SubBytes(state_t* state) {
 	int idx = threadIdx.x + threadIdx.y * 4;
 	if (idx < 16) {
-		int row = idx % 4;
-		int col = idx / 4;
+		int row = idx & 0x3;
+		int col = idx >> 2;
 		(*state)[row][col] = getSBoxValueDevice((*state)[row][col]);
 	}
 }
@@ -18,8 +18,8 @@ __device__ void SubBytes(state_t* state) {
 __device__ void InvSubBytes(state_t* state) {
 	int idx = threadIdx.x + threadIdx.y * 4;
 	if (idx < 16) {
-		int row = idx % 4;
-		int col = idx / 4;
+		int row = idx & 0x3;
+		int col = idx >> 2;
 		(*state)[row][col] = getSBoxInvertDevice((*state)[row][col]);
 	}
 }
