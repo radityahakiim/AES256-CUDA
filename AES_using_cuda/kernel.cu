@@ -45,6 +45,13 @@ inline std::string saveFileDialog() {
 int main() {
 	std::string textKey;
 	char choice;
+	char choice_modes;
+	std::cout << "Select Modes: " << std::endl;
+	std::cout << "1. CTR" << std::endl;
+	std::cout << "2. ECB" << std::endl;
+	std::cout << "Type here: ";
+	std::cin >> choice_modes;
+
 	std::cout << "(E)ncrypt or (D)ecrypt? ";
 	std::cin >> choice;
 	if (choice != 'D' && choice != 'd') {
@@ -84,6 +91,12 @@ int main() {
 		return EXIT_FAILURE;
 	}
 
-	h_AESEncDecECB(inputFilePath, textKey, outputFilePath, isDecryption);
+	if (choice_modes == '1') {
+		h_AESEncDecCTR(inputFilePath, textKey, outputFilePath, isDecryption);
+	}
+	else if (choice_modes == '2') {
+		h_AESEncDecECB(inputFilePath, textKey, outputFilePath, isDecryption);
+	}
+
 	return 0;
 	}
