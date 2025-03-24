@@ -1,7 +1,6 @@
 ﻿#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <openssl/sha.h>
-#include <openssl/rand.h>
 #include <iostream>
 #include "aes_header.cuh"
 // #include <cstring>
