@@ -4,7 +4,6 @@
 #include "cuda_runtime.h"
 #include <cstdint>
 #include <string>
-#include <vector>
 
 // Constants for AES-256
 #define Nb 4 // Number of columns (32-bit words) comprising the state
@@ -54,11 +53,12 @@ __device__ void InvMixColumns(state_t* state); // Invert func
 void convertStringToAESKey(const std::string& keyString, uint8_t* keyArray);
 
 //std::vector<uint8_t> preparePlaintext(const std::string& input);
-void printHex(const std::vector<uint8_t>& data);
+// void printHex(const std::vector<uint8_t>& data);
 
-__global__ void XORWithKeyKernel(uint8_t* data, const uint8_t* key, int dataSize, int keySize);
+// __global__ void XORWithKeyKernel(uint8_t* data, const uint8_t* key, int dataSize, int keySize);
 
 // __global__ void AESEncDecKernel(const uint8_t* plaintext, uint8_t* ciphertext, int numBlocks, int choice);
 void h_AESEncDecECB(std::string inputFile, const std::string key, std::string output, bool isDecryption);
+void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string outputFile, bool isDecryption, uint64_t providedNonce = 0);
 
 #endif // AES_CUH
