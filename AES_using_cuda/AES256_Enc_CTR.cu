@@ -17,9 +17,9 @@ __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, 
 
     state_t* state = &sharedState[threadIdx.x];
     state_t* keystream = &sharedState[threadIdx.x + blockDim.x];
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < 4; i++) {
-        #pragma unroll
+#pragma unroll
         for (int j = 0; j < 4; j++) {
             (*state)[i][j] = states[idx][i][j];
         }
@@ -27,12 +27,10 @@ __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, 
     __syncthreads();
 
     // Prepare counter block: nonce (8 bytes) || counter (8 bytes)
-    uint8_t* counterBlock = reinterpret_cast<uint8_t*>(keystream);
     uint64_t counter_val = counterStart + idx;
-    for (int i = 0; i < 8; i++) {
-        counterBlock[i] = (nonce >> (i & 8)) & 0xFF; // Nonce
-        counterBlock[i + 8] = (counter_val >> (i * 8)) & 0xFF; // Counter
-    }
+    uint8_t* counterBlock = reinterpret_cast<uint8_t*>(keystream);
+    *reinterpret_cast<uint64_t*>(&counterBlock[0]) = nonce;
+    *reinterpret_cast<uint64_t*>(&counterBlock[8]) = counter_val;
 
     // Initial rounds
     AddRoundKey(keystream, 0, c_Rk_CTR);
@@ -50,9 +48,9 @@ __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, 
     AddRoundKey(keystream, Nr, c_Rk_CTR);
 
     // XOR state with keystream
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < 4; i++) {
-    #pragma unroll
+#pragma unroll
         for (int j = 0; j < 4; j++) {
             (*state)[i][j] ^= (*keystream)[i][j];
         }
@@ -113,7 +111,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
 
     // S-box initialization
     SBoxInit(false);
-    std::cout << "S-box initialized for CTR"<< std::endl;
+    std::cout << "S-box initialized for CTR" << std::endl;
 
     // CUDA Events timing
     cudaEvent_t start, stop;
