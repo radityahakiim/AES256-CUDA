@@ -5,59 +5,45 @@
 #include <vector>
 
 __device__ void ShiftRows(state_t* state) {
-	int row = threadIdx.x;
-	if (row > 0) {
-		uint8_t a = (*state)[0][row];
-		uint8_t b = (*state)[1][row];
-		uint8_t c = (*state)[2][row];
-		uint8_t d = (*state)[3][row];
-		// Shift using registers
-		if (row == 1) { 		// Second row shifts one position to left
-			(*state)[0][row] = b;
-			(*state)[1][row] = c;
-			(*state)[2][row] = d;
-			(*state)[3][row] = a;
-		}
-		else if (row == 2) {	// Third row shift two positions to the left
-			(*state)[0][row] = c;
-			(*state)[1][row] = d;
-			(*state)[2][row] = a;
-			(*state)[3][row] = b;
-		}
-		else if (row == 3) {	// Fourth row shift three positions to the left
-			(*state)[0][row] = d;
-			(*state)[1][row] = a;
-			(*state)[2][row] = b;
-			(*state)[3][row] = c;
-		}
-	}
+	// Second row shifts one position to left
+	uint8_t temp = (*state)[0][1];
+	(*state)[0][1] = (*state)[1][1];
+	(*state)[1][1] = (*state)[2][1];
+	(*state)[2][1] = (*state)[3][1];
+	(*state)[3][1] = temp;
+	// Third row shift two positions to the left
+	temp = (*state)[0][2];
+	(*state)[0][2] = (*state)[2][2];
+	(*state)[2][2] = temp;
+	temp = (*state)[1][2];
+	(*state)[1][2] = (*state)[3][2];
+	(*state)[3][2] = temp;
+	// Fourth row shift three positions to the left
+	temp = (*state)[0][3];
+	(*state)[0][3] = (*state)[3][3];
+	(*state)[3][3] = (*state)[2][3];
+	(*state)[2][3] = (*state)[1][3];
+	(*state)[1][3] = temp;
 }
 
 __device__ void InvShiftRows(state_t* state) {
-	int row = threadIdx.x;
-	if (row > 0) {
-		uint8_t a = (*state)[0][row];
-		uint8_t b = (*state)[1][row];
-		uint8_t c = (*state)[2][row];
-		uint8_t d = (*state)[3][row];
-		// Inverse shift uisng registers
-		if (row == 1) {      // Second row shifts right by 1 position
-			(*state)[0][row] = d;
-			(*state)[1][row] = a;
-			(*state)[2][row] = b;
-			(*state)[3][row] = c;
-		}
-		else if (row == 2) { // Third row shifts right by 2 position
-			(*state)[0][row] = c;
-			(*state)[1][row] = d;
-			(*state)[2][row] = a;
-			(*state)[3][row] = b;
-		}
-		else if (row == 3) {// Fourth row shifts right by 3 position
-			(*state)[0][row] = b;
-			(*state)[1][row] = c;
-			(*state)[2][row] = d;
-			(*state)[3][row] = a;
-		}
-	}
+	// Second row shifts right by 1 position
+	uint8_t temp = (*state)[3][1];
+	(*state)[3][1] = (*state)[2][1];
+	(*state)[2][1] = (*state)[1][1];
+	(*state)[1][1] = (*state)[0][1];
+	(*state)[0][1] = temp;
+	// Third row shifts right by 2 position
+	temp = (*state)[0][2];
+	(*state)[0][2] = (*state)[2][2];
+	(*state)[2][2] = temp;
+	temp = (*state)[1][2];
+	(*state)[1][2] = (*state)[3][2];
+	(*state)[3][2] = temp;
+	// Fourth row shifts right by 3 position
+	temp = (*state)[0][3];
+	(*state)[0][3] = (*state)[1][3];
+	(*state)[1][3] = (*state)[2][3];
+	(*state)[2][3] = (*state)[3][3];
+	(*state)[3][3] = temp;
 }
