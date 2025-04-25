@@ -51,6 +51,10 @@ int main() {
 	std::cout << "2. ECB" << std::endl;
 	std::cout << "Type here: ";
 	std::cin >> choice_modes;
+	if ((choice_modes != '1') && (choice_modes != '2')) {
+		std::cerr << "\nPlease choose one of the modes!\n";
+		return 0;
+	}
 
 	std::cout << "(E)ncrypt or (D)ecrypt? ";
 	std::cin >> choice;

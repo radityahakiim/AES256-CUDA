@@ -41,8 +41,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Program Files\OpenSSL-Win64\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files\OpenSSL-Win64\lib\VC\x64\MD;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include;C:\Program Files\OpenSSL-Win64\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64;C:\Program Files\OpenSSL-Win64\lib\VC\x64\MD;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -61,6 +61,7 @@
       <AdditionalOptions> %(AdditionalOptions)</AdditionalOptions>
       <FastMath>true</FastMath>
       <Optimization>InheritFromHost</Optimization>
+      <Include>%(Include)</Include>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -84,6 +85,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="AddRoundKey.cu" />
+    <CudaCompile Include="AES256_Enc_CTR.cu" />
     <CudaCompile Include="AES256_Enc_ECB.cu" />
     <CudaCompile Include="sbox.cu" />
     <CudaCompile Include="kernel.cu" />
