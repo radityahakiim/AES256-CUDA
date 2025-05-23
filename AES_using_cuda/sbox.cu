@@ -1,3 +1,5 @@
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
 #include "aes_header.cuh"
 #include <cstdint>
 #include <iostream>
@@ -47,14 +49,6 @@ const uint8_t inv_sbox[256] = {
 
 uint8_t getSBoxValue(uint8_t num) {
     return sbox[num];
-}
-
-__device__ uint8_t getSBoxValueDevice(uint8_t num) {
-    return d_sb[num];
-}
-
-__device__ uint8_t getSBoxInvertDevice(uint8_t num) {
-    return d_inv_sb[num];
 }
 
 void SBoxInit(bool isDecryption) {
