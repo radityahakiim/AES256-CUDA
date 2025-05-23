@@ -7,69 +7,30 @@
 
 __constant__ uint32_t c_Rk[AES_EXPANDED_KEY_SIZE];
 
-// Encryption
-__global__ void AESEncryptKernel(state_t* states, size_t numBlocks) {
-    extern __shared__ uint8_t shared_Mem[];
-    state_t* sharedState = reinterpret_cast<state_t*>(shared_Mem);
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx >= numBlocks) return;
-
-    uint32_t* gmem_ptr = reinterpret_cast<uint32_t*>(&states[idx]);
-    uint32_t* shmem_ptr = reinterpret_cast<uint32_t*>(&sharedState[threadIdx.x]);
-
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-        shmem_ptr[i] = __ldg(&gmem_ptr[i]);
-    }
-
-    __syncthreads();
-
-    state_t* state = &sharedState[threadIdx.x];
-    // Initial rounds
+// Device encryption
+__device__ void AESEncryptDevice(state_t* state) {
+    // Initial round
     AddRoundKey(state, 0, c_Rk);
+
     // 13 Rounds for AES-256
-#pragma unroll
     for (int round = 1; round < Nr; ++round) {
         SubBytes(state);
         ShiftRows(state);
         MixColumns(state);
         AddRoundKey(state, round, c_Rk);
     }
+
     // Final round
     SubBytes(state);
     ShiftRows(state);
     AddRoundKey(state, Nr, c_Rk);
-
-    __syncthreads();
-
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-        gmem_ptr[i] = shmem_ptr[i];
-    }
 }
 
-// Decryption
-__global__ void AESDecryptKernel(state_t* states, size_t numBlocks) {
-    extern __shared__ uint8_t shared_Mem[];
-    state_t* sharedState = reinterpret_cast<state_t*>(shared_Mem);
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx >= numBlocks) return;
-
-    uint32_t* gmem_ptr = reinterpret_cast<uint32_t*>(&states[idx]);
-    uint32_t* shmem_ptr = reinterpret_cast<uint32_t*>(&sharedState[threadIdx.x]);
-
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-        shmem_ptr[i] = __ldg(&gmem_ptr[i]);
-    }
-
-    __syncthreads();
-    state_t* state = &sharedState[threadIdx.x];
-
+// Device decryption
+__device__ void AESDecryptDevice(state_t* state) {
     // Initial rounds
     AddRoundKey(state, Nr, c_Rk);
     // 13 Rounds for AES-256 (decryption)
-#pragma unroll
     for (int round = Nr - 1; round > 0; --round) {
         InvShiftRows(state);
         InvSubBytes(state);
@@ -80,13 +41,37 @@ __global__ void AESDecryptKernel(state_t* states, size_t numBlocks) {
     InvShiftRows(state);
     InvSubBytes(state);
     AddRoundKey(state, 0, c_Rk);
+}
 
-    __syncthreads();
+// Encryption
+__global__ void AESEncryptKernel(state_t* states, size_t numBlocks) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= numBlocks) return;
 
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-        gmem_ptr[i] = shmem_ptr[i];
-    }
+    // Load as uint4 (16 bytes)
+    uint4 input = reinterpret_cast<uint4*>(states)[idx];
+    state_t state;
+    *reinterpret_cast<uint4*>(&state) = input;
+
+    AESEncryptDevice(&state);
+
+    // Store back
+    reinterpret_cast<uint4*>(states)[idx] = *reinterpret_cast<uint4*>(&state);
+}
+
+// Decryption
+__global__ void AESDecryptKernel(state_t* states, size_t numBlocks) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= numBlocks) return;
+
+    uint4 input = reinterpret_cast<uint4*>(states)[idx];
+    state_t state;
+    *reinterpret_cast<uint4*>(&state) = input;
+
+    // Perform AES encryption
+    AESDecryptDevice(&state);
+
+    reinterpret_cast<uint4*>(states)[idx] = *reinterpret_cast<uint4*>(&state);
 }
 
 void h_AESEncDecECB(std::string inputFile, const std::string key, std::string outputFile, bool isDecryption) {
@@ -100,7 +85,7 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
         std::cerr << "Failed to get device properties.\n";
         return;
     }
-    constexpr size_t PADDED_STATE_SIZE = sizeof(state_t) + 16 - (sizeof(state_t) % 16); // Padded size for shared memory
+    // constexpr size_t PADDED_STATE_SIZE = sizeof(state_t) + 16 - (sizeof(state_t) % 16); // Padded size for shared memory
     int num_sm = prop.multiProcessorCount;
     std::cout << "Using a GPU with " << num_sm << " SMs\n";
 
@@ -176,10 +161,12 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
             }
         }
         // Grid and threads per block section
-        size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
+        // size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
         size_t blockNum = bytesRead / AES_BLOCK_SIZE;
-        size_t threadPblk = blockNum / num_sm;
+        size_t threadPblk = 256;
+        size_t blocksPergrid = (blockNum + threadPblk - 1) / threadPblk;
         // size_t bp_grid = (blockNum + threadPblk - 1) / threadPblk;
+        /*
         if (blockNum % num_sm > 0) threadPblk++;
         if (threadPblk > maxThreads) {
             threadPblk = maxThreads;
@@ -188,12 +175,13 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
                 num_sm++;
             }
         }
+        */
         // blockNum = std::min(blockNum, (static_cast<size_t>(num_sm) * 8)); // Adjust based on profile
-        std::cout << "Launching kernel with " << num_sm << " blocks, " << threadPblk << " threads per block\n";
+        std::cout << "Launching kernel with " << blocksPergrid << " blocks, " << threadPblk << " threads per block\n";
 
         dim3 threadsPerBlock(static_cast<unsigned int>(threadPblk));
-        dim3 blocksPerGrid(static_cast<unsigned int>(num_sm));
-        size_t shmemSize = PADDED_STATE_SIZE * threadPblk;
+        dim3 blocksPerGrid(static_cast<unsigned int>(blocksPergrid));
+        // size_t shmemSize = PADDED_STATE_SIZE * threadPblk;
 
         if (cudaMemcpy(d_buffer, buffer, bytesRead, cudaMemcpyHostToDevice) != cudaSuccess) {
             std::cerr << "Failed to copy input to device memory.\n";
@@ -204,10 +192,10 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
         cudaEventRecord(start);
 
         if (!isDecryption) {
-            AESEncryptKernel << <blocksPerGrid, threadsPerBlock, shmemSize >> > ((state_t*)d_buffer, blockNum);
+            AESEncryptKernel << <blocksPerGrid, threadsPerBlock>> > ((state_t*)d_buffer, blockNum);
         }
         else {
-            AESDecryptKernel << <blocksPerGrid, threadsPerBlock, shmemSize >> > ((state_t*)d_buffer, blockNum);
+            AESDecryptKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, blockNum);
         }
         if ((err = cudaGetLastError()) != cudaSuccess) {
             std::cerr << "Kernel launch failed: " << cudaGetErrorString(err);
