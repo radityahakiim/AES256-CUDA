@@ -11,20 +11,19 @@ __constant__ uint32_t c_Rk_CTR[AES_EXPANDED_KEY_SIZE];
 // Encryption
 __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, uint64_t counterStart) {
     extern __shared__ uint8_t shared_Mem[];
-    state_t* sharedState = reinterpret_cast<state_t*>(shared_Mem);
+    state_t* sharedKeyStream = reinterpret_cast<state_t*>(shared_Mem);
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= numBlocks) return;
 
-    state_t* state = &sharedState[threadIdx.x];
-    state_t* keystream = &sharedState[threadIdx.x + blockDim.x];
+    uint8_t state[4][4];
+    state_t* keystream = &sharedKeyStream[threadIdx.x];
+    uint32_t* src = reinterpret_cast<uint32_t*>(states[idx]);
+    uint32_t* dst = reinterpret_cast<uint32_t*>(state);
+
 #pragma unroll
     for (int i = 0; i < 4; i++) {
-#pragma unroll
-        for (int j = 0; j < 4; j++) {
-            (*state)[i][j] = states[idx][i][j];
-        }
+        dst[i] = src[i];
     }
-    __syncthreads();
 
     // Prepare counter block: nonce (8 bytes) || counter (8 bytes)
     uint64_t counter_val = counterStart + idx;
@@ -52,17 +51,16 @@ __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, 
     for (int i = 0; i < 4; i++) {
 #pragma unroll
         for (int j = 0; j < 4; j++) {
-            (*state)[i][j] ^= (*keystream)[i][j];
+            state[i][j] ^= (*keystream)[i][j];
         }
     }
-    __syncthreads();
 
     // Write back to global memory
 #pragma unroll
     for (int i = 0; i < 4; i++) {
 #pragma unroll
         for (int j = 0; j < 4; j++) {
-            states[idx][i][j] = (*state)[i][j];
+            states[idx][i][j] = state[i][j];
         }
     }
 }
@@ -207,7 +205,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
                 num_sm++;
             }
         }
-        size_t shmemSize = 2 * sizeof(state_t) * threadPblk;
+        size_t shmemSize = sizeof(state_t) * threadPblk;
         // blockNum = std::min(blockNum, (static_cast<size_t>(num_sm) * 8)); // Adjust based on profile
         std::cout << "Launching kernel with " << num_sm << " blocks, " << threadPblk << " threads per block\n";
 

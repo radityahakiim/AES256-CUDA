@@ -4,13 +4,14 @@
 
 __device__ void AddRoundKey(state_t* state, uint8_t round, const uint32_t* roundKey) {
 	size_t offset = (size_t)round * 4;
-	const uint32_t* roundKeyStart = roundKey + offset;
+	const uint4* roundKeyVec = reinterpret_cast<const uint4*>(roundKey + offset);
 
 	// Reinterpret state as uint32_t for efficient word-wise operations
-	uint32_t* state_as_words = reinterpret_cast<uint32_t*>(*state);
+	uint4* stateVec = reinterpret_cast<uint4*>(*state);
 
-#pragma unroll
-	for (uint8_t i = 0; i < 4; i++) {
-		state_as_words[i] ^= roundKeyStart[i];
-	}
+	// XOR 16 bytes in one instruction group
+	stateVec[0].x ^= roundKeyVec[0].x;
+	stateVec[0].y ^= roundKeyVec[0].y;
+	stateVec[0].z ^= roundKeyVec[0].z;
+	stateVec[0].w ^= roundKeyVec[0].w;
 }
