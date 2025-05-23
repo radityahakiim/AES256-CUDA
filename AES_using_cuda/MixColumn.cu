@@ -24,24 +24,25 @@ __device__ void MixColumns(state_t* state) {
     uint32_t* state32 = reinterpret_cast<uint32_t*>(*state);
     uint32_t col = state32[lane];
 
+    // Extract bytes using a single mask and shifts
     uint8_t a0 = col & 0xFF;
     uint8_t a1 = (col >> 8) & 0xFF;
     uint8_t a2 = (col >> 16) & 0xFF;
     uint8_t a3 = (col >> 24) & 0xFF;
-
+    
+    // Compute XOR
     uint8_t t = a0 ^ a1 ^ a2 ^ a3;
-    uint8_t u = xtime(a0 ^ a1);
-    uint8_t v = xtime(a1 ^ a2);
-    uint8_t w = xtime(a2 ^ a3);
-    uint8_t x = xtime(a3 ^ a0);
 
-    uint32_t new_col =
-        ((uint32_t)(x ^ t ^ a3) << 24) |
-        ((uint32_t)(w ^ t ^ a2) << 16) |
-        ((uint32_t)(v ^ t ^ a1) << 8) |
-        ((uint32_t)(u ^ t ^ a0));
+    uint8_t x0 = xtime(a0 ^ a1);
+    uint8_t x1 = xtime(a1 ^ a2);
+    uint8_t x2 = xtime(a2 ^ a3);
+    uint8_t x3 = xtime(a3 ^ a0);
 
-    state32[lane] = new_col;
+    state32[lane] =
+        ((uint32_t)(x3 ^ t ^ a3) << 24) |
+        ((uint32_t)(x2 ^ t ^ a2) << 16) |
+        ((uint32_t)(x1 ^ t ^ a1) << 8) |
+        ((uint32_t)(x0 ^ t ^ a0));
 }
 
 __device__ void InvMixColumns(state_t* state) {
