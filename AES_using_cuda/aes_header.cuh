@@ -18,10 +18,9 @@
 // extern uint8_t inv_sbox[256];
 void SBoxInit(bool isDecryption);
 uint8_t getSBoxValue(uint8_t num);
-__device__ uint8_t getSBoxValueDevice(uint8_t num);
-__device__ uint8_t getSBoxInvertDevice(uint8_t num);
-
-using state_t = uint8_t[4][4];
+// __device__ uint8_t getSBoxValueDevice(uint8_t num);
+// __device__ uint8_t getSBoxInvertDevice(uint8_t num);
+typedef __align__(16) uint8_t state_t[4][4];
 
 // Define rcon
 extern uint8_t Rcon[8];
@@ -30,6 +29,8 @@ extern uint8_t Rcon[8];
 // __constant__ extern int d_Nb;
 // __constant__ extern int d_Nr;
 // __constant__ extern int d_Nk;
+extern __constant__ uint8_t d_sb[256];
+extern __constant__ uint8_t d_inv_sb[256];
 
 // Kernel for expanding the AES key (declaration only)
 void keyExpansion(uint32_t* expandedKey, const uint8_t* originalKey);
