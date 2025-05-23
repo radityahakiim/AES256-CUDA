@@ -62,6 +62,7 @@
       <FastMath>true</FastMath>
       <Optimization>InheritFromHost</Optimization>
       <Include>%(Include)</Include>
+      <PtxAsOptionV>true</PtxAsOptionV>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
