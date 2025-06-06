@@ -10,59 +10,46 @@ __constant__ uint32_t c_Rk_CTR[AES_EXPANDED_KEY_SIZE];
 
 // Encryption
 __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, uint64_t counterStart) {
-    extern __shared__ uint8_t shared_Mem[];
-    state_t* sharedKeyStream = reinterpret_cast<state_t*>(shared_Mem);
+    // extern __shared__ uint8_t shared_Mem[];
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= numBlocks) return;
 
-    uint8_t state[4][4];
-    state_t* keystream = &sharedKeyStream[threadIdx.x];
-    uint32_t* src = reinterpret_cast<uint32_t*>(states[idx]);
-    uint32_t* dst = reinterpret_cast<uint32_t*>(state);
-
-#pragma unroll
-    for (int i = 0; i < 4; i++) {
-        dst[i] = src[i];
-    }
+    state_t keystream;
+    uint4* stu4 = reinterpret_cast<uint4*>(states[idx]);
+    uint4 input = *stu4;
 
     // Prepare counter block: nonce (8 bytes) || counter (8 bytes)
     uint64_t counter_val = counterStart + idx;
-    uint8_t* counterBlock = reinterpret_cast<uint8_t*>(keystream);
+    uint8_t* counterBlock = reinterpret_cast<uint8_t*>(&keystream);
     *reinterpret_cast<uint64_t*>(&counterBlock[0]) = nonce;
     *reinterpret_cast<uint64_t*>(&counterBlock[8]) = counter_val;
 
     // Initial rounds
-    AddRoundKey(keystream, 0, c_Rk_CTR);
+    AddRoundKey(&keystream, 0, c_Rk_CTR);
     // 13 Rounds for AES-256
 #pragma unroll
     for (int round = 1; round < Nr; ++round) {
-        SubBytes(keystream);
-        ShiftRows(keystream);
-        MixColumns(keystream);
-        AddRoundKey(keystream, round, c_Rk_CTR);
+        SubBytes(&keystream);
+        ShiftRows(&keystream);
+        MixColumns(&keystream);
+        AddRoundKey(&keystream, round, c_Rk_CTR);
     }
     // Final round
-    SubBytes(keystream);
-    ShiftRows(keystream);
-    AddRoundKey(keystream, Nr, c_Rk_CTR);
+    SubBytes(&keystream);
+    ShiftRows(&keystream);
+    AddRoundKey(&keystream, Nr, c_Rk_CTR);
 
-    // XOR state with keystream
-#pragma unroll
-    for (int i = 0; i < 4; i++) {
-#pragma unroll
-        for (int j = 0; j < 4; j++) {
-            state[i][j] ^= (*keystream)[i][j];
-        }
-    }
+    // store to destination first
+    uint4* ksu4 = reinterpret_cast<uint4*>(keystream);
+    uint4 result = make_uint4(
+        input.x ^ ksu4->x,
+        input.y ^ ksu4->y,
+        input.z ^ ksu4->z,
+        input.w ^ ksu4->w
+    );
 
     // Write back to global memory
-#pragma unroll
-    for (int i = 0; i < 4; i++) {
-#pragma unroll
-        for (int j = 0; j < 4; j++) {
-            states[idx][i][j] = state[i][j];
-        }
-    }
+    *stu4 = result;
 }
 
 uint64_t generateNonce() {
@@ -195,9 +182,10 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
         }
 
         // Set up thread and grid
-        size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
-        size_t threadPblk = blockNum / num_sm;
-        if (blockNum % num_sm > 0) threadPblk++;
+        // size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
+        size_t threadPblk = 256;
+        // if (blockNum % num_sm > 0) threadPblk++;
+        /*
         if (threadPblk > maxThreads) {
             threadPblk = maxThreads;
             num_sm = static_cast<int>(blockNum) / 1024;
@@ -205,7 +193,8 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
                 num_sm++;
             }
         }
-        size_t shmemSize = sizeof(state_t) * threadPblk;
+        */
+        /// size_t shmemSize = sizeof(state_t) * threadPblk;
         // blockNum = std::min(blockNum, (static_cast<size_t>(num_sm) * 8)); // Adjust based on profile
         std::cout << "Launching kernel with " << num_sm << " blocks, " << threadPblk << " threads per block\n";
 
@@ -220,7 +209,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
 
         cudaEventRecord(start);
 
-        AESCTRKernel << <blocksPerGrid, threadsPerBlock, shmemSize >> > ((state_t*)d_buffer, blockNum, nonce, globalCounter);
+        AESCTRKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, blockNum, nonce, globalCounter);
 
         if ((err = cudaGetLastError()) != cudaSuccess) {
             std::cerr << "Kernel launch failed: " << cudaGetErrorString(err);
