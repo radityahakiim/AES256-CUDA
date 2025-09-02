@@ -11,8 +11,9 @@
 #define Nr 14 // Number of rounds in AES-256
 #define AES_BLOCK_SIZE 16 // Define 128-bit for block size
 #define AES_KEY_SIZE (Nb * Nk) // 256-bit key size in bytes
-#define AES_EXPANDED_KEY_SIZE (Nb * (Nr + 1) * 4) // 240 bytes for AES-256 expanded key
-#define PBKDF2_ITERATIONS 1000
+#define AES_EXPANDED_KEY_SIZE ((Nr + 1) * Nb * 4) // 240 bytes for AES-256 expanded key
+#define NUM_STREAMS 8
+//#define PBKDF2_ITERATIONS 1000
 
 // extern uint8_t sbox[256];
 // extern uint8_t inv_sbox[256];

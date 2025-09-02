@@ -40,7 +40,7 @@ __global__ void AESCTRKernel(state_t* states, size_t numBlocks, uint64_t nonce, 
     AddRoundKey(&keystream, Nr, c_Rk_CTR);
 
     // store to destination first
-    uint4* ksu4 = reinterpret_cast<uint4*>(keystream);
+    uint4* ksu4 = reinterpret_cast<uint4*>(&keystream);
     uint4 result = make_uint4(
         input.x ^ ksu4->x,
         input.y ^ ksu4->y,
@@ -63,7 +63,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     std::cout << "Starting CTR " << (isDecryption ? "Decryption" : "Encryption") << " process with input: " << inputFile << ", output: " << outputFile << std::endl;
 
     // Device preparation
-    cudaError_t err;
+    // cudaError_t err;
     cudaSetDevice(0); // Using main GPU
     cudaDeviceProp prop;
     if (cudaGetDeviceProperties(&prop, 0) != cudaSuccess) {
@@ -73,7 +73,8 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     // constexpr size_t PADDED_STATE_SIZE = sizeof(state_t) + (16 - (sizeof(state_t) % 16)) % 16; // Padded size for shared memory
     int num_sm = prop.multiProcessorCount;
     std::cout << "Using a GPU with " << num_sm << " SMs\n";
-
+    
+    cudaFree(0);
     // Round Key section
     uint8_t* originalKey;
     cudaMallocHost(&originalKey, AES_KEY_SIZE);
@@ -99,10 +100,8 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     std::cout << "S-box initialized for CTR" << std::endl;
 
     // CUDA Events timing
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    float milliseconds = 0;
+    cudaEvent_t start[NUM_STREAMS], stop[NUM_STREAMS];
+    // float milliseconds = 0;
     float totalTime = 0.0;
     int kernelExec = 0;
 
@@ -145,16 +144,19 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     }
 
     // Declare buffer data and size
-    size_t bufferSize = (static_cast<size_t>(1024) * 1024);
+    size_t bufferSize = (1024 * 1024) * 8;
     uint8_t* buffer;
-    uint8_t* d_buffer; // Device buffer
+    uint8_t* d_buffer[NUM_STREAMS]; // Device buffer
     size_t bytesRead;
     // Host alloc
-    cudaMallocHost(&buffer, bufferSize);
-    // Device buffer allocation
-    if (cudaMalloc(&d_buffer, ((bufferSize + AES_BLOCK_SIZE - 1) / AES_BLOCK_SIZE) * sizeof(state_t)) != cudaSuccess) {
-        cudaDeviceReset();
-        return;
+    cudaMallocHost(&buffer, bufferSize + AES_BLOCK_SIZE);
+    // Cuda stream define
+    cudaStream_t stream[NUM_STREAMS];
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        cudaStreamCreate(&stream[i]);
+        cudaMalloc(&d_buffer[i], bufferSize); // Device buffer allocation with streams
+        cudaEventCreate(&start[i]);
+        cudaEventCreate(&stop[i]);
     }
 
     uint64_t globalCounter = 0;
@@ -170,16 +172,8 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
         // size_t bp_grid = (blockNum + threadPblk - 1) / threadPblk;
 
         // Convert buffer to state_t array
-        state_t* hostStates;
-        cudaMallocHost(&hostStates, blockNum * sizeof(state_t));
-        for (size_t i = 0; i < blockNum; i++) {
-            for (int r = 0; r < 4; r++) {
-                for (int c = 0; c < 4; c++) {
-                    size_t byteIdx = i * AES_BLOCK_SIZE + (r * 4 + c);
-                    hostStates[i][r][c] = (byteIdx < bytesRead) ? buffer[byteIdx] : 0;
-                }
-            }
-        }
+        size_t padBytes = ((bytesRead % AES_BLOCK_SIZE) == 0) ? 0 : (AES_BLOCK_SIZE - (bytesRead % AES_BLOCK_SIZE));
+        if (padBytes > 0) memset(buffer + bytesRead, 0, padBytes);
 
         // Set up thread and grid
         // size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
@@ -201,50 +195,67 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
         dim3 threadsPerBlock(static_cast<unsigned int>(threadPblk));
         dim3 blocksPerGrid(static_cast<unsigned int>(num_sm));
 
-        if (cudaMemcpy(d_buffer, hostStates, blockNum * sizeof(state_t), cudaMemcpyHostToDevice) != cudaSuccess) {
-            std::cerr << "Failed to copy input to device memory.\n";
-            cudaDeviceReset();
-            return;
-        }
+        // size_t partSize = (blockNum + NUM_STREAMS - 1) / NUM_STREAMS;
+        size_t sizes[NUM_STREAMS], nblockPerStream[NUM_STREAMS];
+        // Partition in blocks (AES blocks), not bytes
+        size_t partBlocks = (blockNum + NUM_STREAMS - 1) / NUM_STREAMS;
 
-        cudaEventRecord(start);
-
-        AESCTRKernel << <blocksPerGrid, threadsPerBlock >> > ((state_t*)d_buffer, blockNum, nonce, globalCounter);
-
-        if ((err = cudaGetLastError()) != cudaSuccess) {
-            std::cerr << "Kernel launch failed: " << cudaGetErrorString(err);
-            cudaDeviceReset();
-            return;
-        }
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&milliseconds, start, stop);
-        std::cout << "Kernel execution completed in " << milliseconds << " ms\n";
-
-        // Accumulate the time and count the execution
-        totalTime += milliseconds;
-        kernelExec++;
-
-        // Copy back to host
-        err = cudaMemcpy(hostStates, d_buffer, blockNum * sizeof(state_t), cudaMemcpyDeviceToHost);
-        if (err != cudaSuccess) {
-            std::cerr << "Failed to copy result from device to host memory : " << cudaGetErrorString(err);
-            cudaDeviceReset();
-            return;
-        }
-
-        for (size_t i = 0; i < blockNum; i++) {
-            for (int r = 0; r < 4; r++) {
-                for (int c = 0; c < 4; c++) {
-                    size_t byteIdx = i * AES_BLOCK_SIZE + (r * 4 + c);
-                    if (byteIdx < bytesRead) {
-                        buffer[byteIdx] = hostStates[i][r][c];
-                    }
-                }
+        for (int s = 0; s < NUM_STREAMS; ++s) {
+            size_t startBlock = s * partBlocks;
+            if (startBlock >= blockNum) {
+                // no work for this stream
+                nblockPerStream[s] = 0;
+                sizes[s] = 0;
+                continue;
             }
-        }
-        cudaFreeHost(hostStates);
+            size_t nblocks = std::min(partBlocks, blockNum - startBlock);
+            nblockPerStream[s] = nblocks;
+            sizes[s] = nblocks * AES_BLOCK_SIZE;           // bytes
 
+            uint8_t* hostPtr = buffer + startBlock * AES_BLOCK_SIZE;   // correct element pointer arithmetic
+            uint8_t* devPtr = reinterpret_cast<uint8_t*>(d_buffer[s]);
+
+            // Copy host to device (element pointer ok because cudaMemcpyAsync uses bytes arg)
+            cudaMemcpyAsync(devPtr, hostPtr, sizes[s], cudaMemcpyHostToDevice, stream[s]);
+            cudaEventRecord(start[s], stream[s]);
+
+            // Compute kernel grid: threads * blocks must cover nblocks
+            size_t blocksNeeded = (nblocks + threadPblk - 1) / threadPblk;
+            dim3 blocksPerGrid(static_cast<unsigned int>(blocksNeeded));
+
+            // Pass counterStart as blocks (not bytes): globalCounter holds blocks processed so far
+            uint64_t counterStartForStream = globalCounter + startBlock;
+
+            AESCTRKernel << <blocksPerGrid, threadsPerBlock, 0, stream[s] >> > (
+                reinterpret_cast<state_t*>(devPtr),
+                nblocks,
+                nonce,
+                counterStartForStream
+                );
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "Kernel launch failed on stream " << s << ": " << cudaGetErrorString(err) << "\n";
+                cudaDeviceReset();
+                return;
+            }
+
+            // Device to Host copy scheduled AFTER kernel completes on this stream
+            cudaMemcpyAsync(hostPtr, devPtr, sizes[s], cudaMemcpyDeviceToHost, stream[s]);
+
+            // Record stop after the copy; will indicate full roundtrip time when we synchronize
+            cudaEventRecord(stop[s], stream[s]);
+        }
+
+        // Wait for all streams to finish their copies and measure time
+        for (int s = 0; s < NUM_STREAMS; ++s) {
+            if (nblockPerStream[s] == 0) continue;
+            cudaStreamSynchronize(stream[s]); // ensure hostPtr contains final data
+            float ms = 0.0f;
+            cudaEventElapsedTime(&ms, start[s], stop[s]);
+            totalTime += ms;
+            kernelExec++;
+            std::cout << "Stream " << s << " done: blocks=" << nblockPerStream[s] << ", bytes=" << sizes[s] << ", time=" << ms << " ms\n";
+        }
         if (fwrite(buffer, 1, bytesRead, file_out) != bytesRead) {
             std::cerr << "Error writing decrypted data to file.\n";
             cudaDeviceReset();
@@ -257,10 +268,14 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     fclose(file_in);
     fclose(file_out);
     cudaFreeHost(buffer);
-    cudaFree(d_buffer);
+    // cudaFree(d_buffer);
     // cudaFree(d_roundKey);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    for (int i = 0; i < NUM_STREAMS; i++) {
+        cudaStreamDestroy(stream[i]);
+        cudaFree(d_buffer[i]);
+        cudaEventDestroy(start[i]);
+        cudaEventDestroy(stop[i]);
+    }
 
     // Calculate and print average time
     if (kernelExec > 0) {

@@ -3,7 +3,7 @@
 #include "aes_header.cuh"
 
 static __device__ __forceinline__ uint8_t xtime(uint8_t x) {
-    return ((x << 1) ^ (-(x >> 7) & 1) & 0x1b);
+    return ((x << 1) ^ ((x >> 7) & 0x1b));
 }
 
 __device__ __forceinline__ uint8_t mul09(uint8_t x) {
