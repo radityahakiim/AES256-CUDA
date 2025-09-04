@@ -4,6 +4,7 @@
 #include "cuda_runtime.h"
 #include <cstdint>
 #include <string>
+#include <mma.h>
 
 // Constants for AES-256
 #define Nb 4 // Number of columns (32-bit words) comprising the state
@@ -17,7 +18,7 @@
 
 // extern uint8_t sbox[256];
 // extern uint8_t inv_sbox[256];
-void SBoxInit(bool isDecryption);
+// void SBoxInit(bool isDecryption);
 uint8_t getSBoxValue(uint8_t num);
 // __device__ uint8_t getSBoxValueDevice(uint8_t num);
 // __device__ uint8_t getSBoxInvertDevice(uint8_t num);
@@ -32,6 +33,10 @@ extern uint8_t Rcon[8];
 // __constant__ extern int d_Nk;
 extern __constant__ uint8_t d_sb[256];
 extern __constant__ uint8_t d_inv_sb[256];
+
+// For mix matrix
+extern __constant__ half mix_matrix[32*32];
+void init_mix_matrix();
 
 // Kernel for expanding the AES key (declaration only)
 void keyExpansion(uint32_t* expandedKey, const uint8_t* originalKey);

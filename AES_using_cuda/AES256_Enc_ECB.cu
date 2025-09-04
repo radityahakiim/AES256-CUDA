@@ -8,7 +8,7 @@
 __constant__ uint32_t c_Rk[AES_EXPANDED_KEY_SIZE];
 
 // Device encryption
-__device__ void AESEncryptDevice(state_t* state) {
+__device__ void AESEncryptDevice(state_t* state, int numBlocks) {
     // Initial round
     AddRoundKey(state, 0, c_Rk);
 
@@ -53,7 +53,7 @@ __global__ void AESEncryptKernel(state_t* states, size_t numBlocks) {
     state_t state;
     *reinterpret_cast<uint4*>(&state) = input;
 
-    AESEncryptDevice(&state);
+    AESEncryptDevice(&state, numBlocks);
 
     // Store back
     reinterpret_cast<uint4*>(states)[idx] = *reinterpret_cast<uint4*>(&state);
@@ -111,8 +111,8 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
     std::cout << "Expanded key copied to constant\n";
 
     // S-box initialization
-    SBoxInit(isDecryption);
-    std::cout << "S-box initialized for " << (isDecryption ? "decryption" : "encryption") << std::endl;
+    // SBoxInit(isDecryption);
+    // std::cout << "S-box initialized for " << (isDecryption ? "decryption" : "encryption") << std::endl;
 
     // CUDA Events timing
     cudaEvent_t start[NUM_STREAMS], stop[NUM_STREAMS];
@@ -165,7 +165,7 @@ void h_AESEncDecECB(std::string inputFile, const std::string key, std::string ou
         // Grid and threads per block section
         // size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
         size_t blockNum = bytesRead / AES_BLOCK_SIZE;
-        size_t threadPblk = 256;
+        size_t threadPblk = 1024;
         size_t blocksPergrid = (blockNum + threadPblk - 1) / threadPblk;
         // size_t bp_grid = (blockNum + threadPblk - 1) / threadPblk;
         /*

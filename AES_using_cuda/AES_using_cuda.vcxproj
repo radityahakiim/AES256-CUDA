@@ -63,6 +63,7 @@
       <Optimization>InheritFromHost</Optimization>
       <Include>%(Include)</Include>
       <PtxAsOptionV>true</PtxAsOptionV>
+      <CodeGeneration>compute_86,sm_86</CodeGeneration>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -88,9 +89,10 @@
     <CudaCompile Include="AddRoundKey.cu" />
     <CudaCompile Include="AES256_Enc_CTR.cu" />
     <CudaCompile Include="AES256_Enc_ECB.cu" />
+    <CudaCompile Include="generate_matrix_mix.cu" />
     <CudaCompile Include="sbox.cu" />
     <CudaCompile Include="kernel.cu" />
-    <CudaCompile Include="key_expansion.cu" />
+    <CudaCompile Include="key_expansion.cpp" />
     <CudaCompile Include="MixColumn.cu" />
     <CudaCompile Include="plaintextXOR.cu" />
     <CudaCompile Include="ShiftRows.cu" />

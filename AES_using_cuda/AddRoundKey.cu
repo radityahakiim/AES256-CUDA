@@ -9,9 +9,17 @@ __device__ void AddRoundKey(state_t* state, uint8_t round, const uint32_t* round
 	// Reinterpret state as uint32_t for efficient word-wise operations
 	uint4* stateVec = reinterpret_cast<uint4*>(*state);
 
+	// Get lane ID within the warp
+	unsigned int lane = threadIdx.x % 32;
+
+	uint4 rk = { 0, 0, 0, 0 };
+	if (lane == 0) {
+		rk = *roundKeyVec;
+	}
+
 	// XOR 16 bytes in one instruction group
-	stateVec[0].x ^= roundKeyVec[0].x;
-	stateVec[0].y ^= roundKeyVec[0].y;
-	stateVec[0].z ^= roundKeyVec[0].z;
-	stateVec[0].w ^= roundKeyVec[0].w;
+	stateVec[0].x ^= __shfl_sync(0xFFFFFFFF, rk.x, 0);
+	stateVec[0].y ^= __shfl_sync(0xFFFFFFFF, rk.y, 0);
+	stateVec[0].z ^= __shfl_sync(0xFFFFFFFF, rk.z, 0);
+	stateVec[0].w ^= __shfl_sync(0xFFFFFFFF, rk.w, 0);
 }

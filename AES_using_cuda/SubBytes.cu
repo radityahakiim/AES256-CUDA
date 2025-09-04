@@ -1,8 +1,6 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "aes_header.cuh"
-#include <iostream>
-#include <vector>
 
 // SubBytes (for encryption)
 __device__ void SubBytes(state_t* state) {

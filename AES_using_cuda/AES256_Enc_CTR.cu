@@ -96,8 +96,8 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     std::cout << "Expanded key copied to constant\n";
 
     // S-box initialization
-    SBoxInit(false);
-    std::cout << "S-box initialized for CTR" << std::endl;
+    // SBoxInit(false);
+    // std::cout << "S-box initialized for CTR" << std::endl;
 
     // CUDA Events timing
     cudaEvent_t start[NUM_STREAMS], stop[NUM_STREAMS];
@@ -144,7 +144,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
     }
 
     // Declare buffer data and size
-    size_t bufferSize = (1024 * 1024) * 8;
+    size_t bufferSize = (1024 * 1024) * 128;
     uint8_t* buffer;
     uint8_t* d_buffer[NUM_STREAMS]; // Device buffer
     size_t bytesRead;
@@ -177,7 +177,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
 
         // Set up thread and grid
         // size_t maxThreads = static_cast<size_t>(prop.maxThreadsPerBlock);
-        size_t threadPblk = 256;
+        size_t threadPblk = 128;
         // if (blockNum % num_sm > 0) threadPblk++;
         /*
         if (threadPblk > maxThreads) {
@@ -226,7 +226,7 @@ void h_AESEncDecCTR(std::string inputFile, const std::string key, std::string ou
             // Pass counterStart as blocks (not bytes): globalCounter holds blocks processed so far
             uint64_t counterStartForStream = globalCounter + startBlock;
 
-            AESCTRKernel << <blocksPerGrid, threadsPerBlock, 0, stream[s] >> > (
+            AESCTRKernel << <blocksPerGrid, threadsPerBlock, 64, stream[s] >> > (
                 reinterpret_cast<state_t*>(devPtr),
                 nblocks,
                 nonce,

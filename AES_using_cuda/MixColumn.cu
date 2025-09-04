@@ -6,6 +6,17 @@ static __device__ __forceinline__ uint8_t xtime(uint8_t x) {
     return ((x << 1) ^ ((x >> 7) & 0x1b));
 }
 
+__constant__ uint32_t M[32] = {
+    0x01018180u, 0x02028381u, 0x04040602u, 0x08088C84u,
+    0x10109888u, 0x20203010u, 0x40406020u, 0x8080C040u,
+    0x01818001u, 0x02838102u, 0x04060204u, 0x088C8408u,
+    0x10988810u, 0x20301020u, 0x40602040u, 0x80C04080u,
+    0x81800101u, 0x83810202u, 0x06020404u, 0x8C840808u,
+    0x98881010u, 0x30102020u, 0x60204040u, 0xC0408080u,
+    0x80010181u, 0x81020283u, 0x02040406u, 0x8408088Cu,
+    0x88101098u, 0x10202030u, 0x20404060u, 0x408080C0u
+};
+
 __device__ __forceinline__ uint8_t mul09(uint8_t x) {
     return xtime(xtime(xtime(x))) ^ x;
 }
@@ -20,29 +31,74 @@ __device__ __forceinline__ uint8_t mul0e(uint8_t x) {
 }
 
 __device__ void MixColumns(state_t* state) {
-    int lane = threadIdx.x & 3;
-    uint32_t* state32 = reinterpret_cast<uint32_t*>(*state);
-    uint32_t col = state32[lane];
+    const unsigned mask_all = 0xffffffffu;
+    unsigned lane = threadIdx.x & 31u;
 
-    // Extract bytes using a single mask and shifts
-    uint8_t a0 = col & 0xFF;
-    uint8_t a1 = (col >> 8) & 0xFF;
-    uint8_t a2 = (col >> 16) & 0xFF;
-    uint8_t a3 = (col >> 24) & 0xFF;
-    
-    // Compute XOR
-    uint8_t t = a0 ^ a1 ^ a2 ^ a3;
+    // Load one row of MixColumns matrix into each lane
+    uint32_t M_row = 0;
+    if (lane < 32u) {
+        M_row = M[lane];
+    }
 
-    uint8_t x0 = xtime(a0 ^ a1);
-    uint8_t x1 = xtime(a1 ^ a2);
-    uint8_t x2 = xtime(a2 ^ a3);
-    uint8_t x3 = xtime(a3 ^ a0);
+    // Process column 0
+    uint32_t input_bits0 = 0u;
+    if (lane == 0u) {
+        input_bits0 = (uint32_t)(*state)[0][0] | ((uint32_t)(*state)[0][1] << 8) | ((uint32_t)(*state)[0][2] << 16) | ((uint32_t)(*state)[0][3] << 24);
+    }
+    input_bits0 = __shfl_sync(mask_all, input_bits0, 0);
+    unsigned p0 = (__popc(M_row & input_bits0) & 1u);
+    uint32_t new_bits0 = __ballot_sync(mask_all, p0 != 0);
+    if (lane == 0u) {
+        (*state)[0][0] = new_bits0 & 0xFFu;
+        (*state)[0][1] = (new_bits0 >> 8) & 0xFFu;
+        (*state)[0][2] = (new_bits0 >> 16) & 0xFFu;
+        (*state)[0][3] = (new_bits0 >> 24) & 0xFFu;
+    }
 
-    state32[lane] =
-        ((uint32_t)(x3 ^ t ^ a3) << 24) |
-        ((uint32_t)(x2 ^ t ^ a2) << 16) |
-        ((uint32_t)(x1 ^ t ^ a1) << 8) |
-        ((uint32_t)(x0 ^ t ^ a0));
+    // Process column 1
+    uint32_t input_bits1 = 0u;
+    if (lane == 0u) {
+        input_bits1 = (uint32_t)(*state)[1][0] | ((uint32_t)(*state)[1][1] << 8) | ((uint32_t)(*state)[1][2] << 16) | ((uint32_t)(*state)[1][3] << 24);
+    }
+    input_bits1 = __shfl_sync(mask_all, input_bits1, 0);
+    unsigned p1 = (__popc(M_row & input_bits1) & 1u);
+    uint32_t new_bits1 = __ballot_sync(mask_all, p1 != 0);
+    if (lane == 0u) {
+        (*state)[1][0] = new_bits1 & 0xFFu;
+        (*state)[1][1] = (new_bits1 >> 8) & 0xFFu;
+        (*state)[1][2] = (new_bits1 >> 16) & 0xFFu;
+        (*state)[1][3] = (new_bits1 >> 24) & 0xFFu;
+    }
+
+    // Process column 2
+    uint32_t input_bits2 = 0u;
+    if (lane == 0u) {
+        input_bits2 = (uint32_t)(*state)[2][0] | ((uint32_t)(*state)[2][1] << 8) | ((uint32_t)(*state)[2][2] << 16) | ((uint32_t)(*state)[2][3] << 24);
+    }
+    input_bits2 = __shfl_sync(mask_all, input_bits2, 0);
+    unsigned p2 = (__popc(M_row & input_bits2) & 1u);
+    uint32_t new_bits2 = __ballot_sync(mask_all, p2 != 0);
+    if (lane == 0u) {
+        (*state)[2][0] = new_bits2 & 0xFFu;
+        (*state)[2][1] = (new_bits2 >> 8) & 0xFFu;
+        (*state)[2][2] = (new_bits2 >> 16) & 0xFFu;
+        (*state)[2][3] = (new_bits2 >> 24) & 0xFFu;
+    }
+
+    // Process column 3
+    uint32_t input_bits3 = 0u;
+    if (lane == 0u) {
+        input_bits3 = (uint32_t)(*state)[3][0] | ((uint32_t)(*state)[3][1] << 8) | ((uint32_t)(*state)[3][2] << 16) | ((uint32_t)(*state)[3][3] << 24);
+    }
+    input_bits3 = __shfl_sync(mask_all, input_bits3, 0);
+    unsigned p3 = (__popc(M_row & input_bits3) & 1u);
+    uint32_t new_bits3 = __ballot_sync(mask_all, p3 != 0);
+    if (lane == 0u) {
+        (*state)[3][0] = new_bits3 & 0xFFu;
+        (*state)[3][1] = (new_bits3 >> 8) & 0xFFu;
+        (*state)[3][2] = (new_bits3 >> 16) & 0xFFu;
+        (*state)[3][3] = (new_bits3 >> 24) & 0xFFu;
+    }
 }
 
 __device__ void InvMixColumns(state_t* state) {
