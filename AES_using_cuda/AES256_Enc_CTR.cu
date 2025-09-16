@@ -99,7 +99,7 @@ __device__ __forceinline__ void MixColumns(state_t* state) {
         : "r"(x)
         );
     uint32_t out;
-    asm("{\n\t"
+    asm volatile("{\n\t"
         "lop3.b32 %0, %1, %2, %3, 0x96;\n\t"   // out = x ^ x_rot1 ^ t_rep
         "xor.b32  %0, %0, %4;\n\t"             // out ^= col
         "}"
@@ -117,14 +117,14 @@ __device__ __forceinline__ void ShiftRows(state_t* state) {
     row3 = *((uint32_t*)&((*state)[2][0]));
     row4 = *((uint32_t*)&((*state)[3][0]));
 
-    // Use PTX inline assembly with barrel shift (shf.l.wrap.b32)
+    // Use PTX inline assembly with prmt
     asm volatile (
         // row2: rotate left by 1 byte
-        "prmt.b32 %0, %0, %0, 0x041302;\n\t"
+        "prmt.b32 %0, %0, %0, 0x0321;\n\t"
         // row3: rotate left by 2 bytes
-        "prmt.b32 %1, %1, %1, 0x2301;\n\t"
+        "prmt.b32 %1, %1, %1, 0x1032;\n\t"
         // row4: rotate left by 3 bytes
-        "prmt.b32 %2, %2, %2, 0x3201;\n\t"
+        "prmt.b32 %2, %2, %2, 0x2103;\n\t"
         : "+r"(row2), "+r"(row3), "+r"(row4)
         );
 
