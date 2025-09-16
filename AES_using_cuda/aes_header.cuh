@@ -11,7 +11,7 @@
 #define Nr 14 // Number of rounds in AES-256
 #define AES_BLOCK_SIZE 16 // Define 128-bit for block size
 #define AES_KEY_SIZE (Nb * Nk) // 256-bit key size in bytes
-#define AES_EXPANDED_KEY_SIZE ((Nr + 1) * Nb * 4) // 240 bytes for AES-256 expanded key
+#define AES_EXPANDED_KEY_SIZE ((Nr + 1) * Nb) // 240 bytes for AES-256 expanded key
 #define NUM_STREAMS 8
 //#define PBKDF2_ITERATIONS 1000
 
@@ -35,21 +35,6 @@ extern __constant__ uint8_t d_inv_sb[256];
 
 // Kernel for expanding the AES key (declaration only)
 void keyExpansion(uint32_t* expandedKey, const uint8_t* originalKey);
-
-// Kernel for AddRoundKey (declaration only)
-__device__ void AddRoundKey(state_t* state, uint8_t round, const uint32_t* roundKey);
-
-// Kernel for SubBytes (declaration only)
-__device__ void SubBytes(state_t* state);
-__device__ void InvSubBytes(state_t* state); // Invert func
-
-// Kernel for ShiftRows (declaration only)
-__device__ void ShiftRows(state_t* state);
-__device__ void InvShiftRows(state_t* state); // Invert func
-
-// Kernel for MixColumns (declaration only
-__device__ void MixColumns(state_t* state);
-__device__ void InvMixColumns(state_t* state); // Invert func
 
 // Host function for converting a string to an AES-compatible key
 void convertStringToAESKey(const std::string& keyString, uint8_t* keyArray);

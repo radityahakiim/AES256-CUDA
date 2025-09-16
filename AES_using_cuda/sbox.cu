@@ -8,7 +8,7 @@ __constant__ uint8_t d_sb[256];
 __constant__ uint8_t d_inv_sb[256];
 
 // Define S-box
-const uint8_t sbox[256] = {
+const uint8_t h_sbox[256] = {
     //  00    01    02    03    04    05    06    07    08    09    0a    0b    0c    0d    0e    0f	
        0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, // 00
        0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, // 10
@@ -48,7 +48,7 @@ const uint8_t inv_sbox[256] = {
 };
 
 uint8_t getSBoxValue(uint8_t num) {
-    return sbox[num];
+    return h_sbox[num];
 }
 
 void SBoxInit(bool isDecryption) {
@@ -56,6 +56,6 @@ void SBoxInit(bool isDecryption) {
         cudaMemcpyToSymbol(d_inv_sb, inv_sbox, sizeof(inv_sbox));
     }
     else {
-        cudaMemcpyToSymbol(d_sb, sbox, sizeof(sbox));
+        cudaMemcpyToSymbol(d_sb, h_sbox, sizeof(h_sbox));
     }
 }
